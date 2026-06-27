@@ -76,6 +76,23 @@ function notify(room, toRole, obj) {
   }
 }
 
+// ห้องที่มี "คนขับ" (controller ที่เป็น driver) อยู่ = คันที่ถูกล็อก
+function occupiedRooms() {
+  const out = [];
+  for (const [room, set] of rooms) {
+    if ([...set].some(c => c.role === 'controller' && c.isDriver)) out.push(room);
+  }
+  return out;
+}
+
+// ส่งรายการคันที่ถูกล็อกให้ controller ทุกคน (ทุก room) เพื่ออัปเดตแถบเลือกคัน
+function broadcastCars() {
+  const msg = JSON.stringify({ sys: 'cars', occupied: occupiedRooms() });
+  for (const set of rooms.values())
+    for (const c of set)
+      if (c.role === 'controller' && c.readyState === 1) c.send(msg);
+}
+
 wss.on('connection', (ws, req) => {
   const q = url.parse(req.url, true).query;
   const room = String(q.room || 'default');
@@ -91,23 +108,40 @@ wss.on('connection', (ws, req) => {
   rooms.get(room).add(ws);
   console.log(`+ ${role} -> room "${room}" (${peers(room).size} peers)`);
 
-  // บอก controller ว่ามี robot/camera ออนไลน์แล้ว
-  if (role !== 'controller') notify(room, 'controller', { sys: 'status', role, online: true });
+  if (role === 'controller') {
+    // ล็อกตัวแรก: ถ้ายังไม่มีคนขับใน room นี้ -> เป็นคนขับ, ไม่งั้นเป็นผู้ชม
+    const hasDriver = [...peers(room)].some(c => c !== ws && c.role === 'controller' && c.isDriver);
+    ws.isDriver = !hasDriver;
+    ws.send(JSON.stringify({ sys: 'role', room, driver: ws.isDriver }));
+    ws.send(JSON.stringify({ sys: 'cars', occupied: occupiedRooms() }));
+    if (ws.isDriver) broadcastCars();      // มีคนขับใหม่ -> แจ้งทุกคน
+  } else {
+    // บอก controller ว่ามี robot/camera ออนไลน์แล้ว
+    notify(room, 'controller', { sys: 'status', role, online: true });
+  }
 
   ws.on('pong', () => { ws.isAlive = true; });
 
   ws.on('message', (data, isBinary) => {
     switch (role) {
-      case 'controller': forward(room, 'robot', data, isBinary, ws); break;   // คำสั่ง -> หุ่น
+      case 'controller': if (ws.isDriver) forward(room, 'robot', data, isBinary, ws); break; // เฉพาะคนขับ -> หุ่น
       case 'robot':      forward(room, 'controller', data, isBinary, ws); break; // telemetry -> เว็บ
-      case 'camera':     forward(room, 'controller', data, isBinary, ws); break; // เฟรม -> เว็บ
+      case 'camera':     forward(room, 'controller', data, isBinary, ws); break; // เฟรม -> เว็บ (ผู้ชมก็เห็น)
     }
   });
 
   ws.on('close', () => {
+    const wasDriver = role === 'controller' && ws.isDriver;
     peers(room).delete(ws);
     if (peers(room).size === 0) rooms.delete(room);
     if (role !== 'controller') notify(room, 'controller', { sys: 'status', role, online: false });
+
+    if (wasDriver) {
+      // คนขับออก -> เลื่อนผู้ชมคนถัดไปขึ้นเป็นคนขับ
+      const next = [...peers(room)].find(c => c.role === 'controller');
+      if (next) { next.isDriver = true; next.send(JSON.stringify({ sys: 'role', room, driver: true })); }
+      broadcastCars();
+    }
     console.log(`- ${role} left room "${room}"`);
   });
 

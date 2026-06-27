@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="th">
+<html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>ESP32 Robot Control (Cloud)</title>
 <style>
   :root {
@@ -12,33 +12,49 @@
   }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html,body { margin:0; height:100%; }
-  body { background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; display:flex; flex-direction:column; overflow:hidden; }
+  body {
+    background:var(--bg); color:var(--text);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    display:flex; flex-direction:column; overflow:hidden;
+    /* prevent long-press selection / copy callout on mobile */
+    -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
+  }
+  /* keep text inputs selectable */
+  input { -webkit-user-select:text; user-select:text; -webkit-touch-callout:default; }
 
   header { display:flex; align-items:center; gap:10px; padding:10px 16px; background:var(--panel); border-bottom:1px solid #000; flex-wrap:wrap; }
   header h1 { font-size:16px; margin:0; font-weight:600; white-space:nowrap; }
   .status { margin-left:auto; display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted); flex-wrap:wrap; }
-  .dot { width:10px; height:10px; border-radius:50%; background:var(--danger); transition:background .2s; }
+  .dot { width:10px; height:10px; border-radius:50%; background:var(--danger); transition:background .2s; flex:none; }
   .dot.on { background:var(--accent); box-shadow:0 0 8px var(--accent); }
   .cfg { background:var(--panel-2); color:var(--text); border:1px solid #333; border-radius:8px; padding:5px 8px; font-size:12px; }
-  .cfg.url { width:230px; } .cfg.token { width:90px; }
+  .cfg.url { width:220px; } .cfg.token { width:90px; }
 
-  /* แถบเลือกคัน */
-  .carbar { display:flex; align-items:center; gap:8px; padding:8px 16px; background:var(--panel-2); border-bottom:1px solid #000; overflow-x:auto; }
-  .carbar .lbl { font-size:13px; color:var(--muted); white-space:nowrap; }
-  .car { display:flex; align-items:center; gap:6px; padding:7px 14px; border-radius:10px; border:1px solid #354259; background:var(--panel); color:var(--text); font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap; transition:background .1s,border-color .1s; }
+  /* car selector bar */
+  .carbar { display:flex; align-items:center; gap:8px; padding:8px 16px; background:var(--panel-2); border-bottom:1px solid #000; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .carbar .lbl { font-size:13px; color:var(--muted); white-space:nowrap; flex:none; }
+  .car { display:flex; align-items:center; gap:6px; padding:8px 14px; border-radius:10px; border:1px solid #354259; background:var(--panel); color:var(--text); font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap; flex:none; transition:background .1s,border-color .1s; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; touch-action:manipulation; }
   .car .cdot { width:8px; height:8px; border-radius:50%; background:var(--danger); }
   .car .cdot.on { background:var(--accent); box-shadow:0 0 6px var(--accent); }
   .car.active { background:var(--accent-press); border-color:var(--accent); color:#fff; }
+  .car .lock { display:none; font-size:12px; }
+  .car.locked { border-color:#5a2a3a; }
+  .car.locked .lock { display:inline; }
+  .car.locked.active { background:#3a2330; border-color:#5a2a3a; color:var(--danger); }
+
+  /* driver / spectator notice + lock controls when spectating */
+  #driveNotice { font-size:13px; padding:8px 12px; border-radius:10px; margin-bottom:4px; display:none; font-weight:600; }
+  #driveNotice.spectator { display:block; background:#3a2330; color:var(--danger); }
+  .controls-locked { opacity:.35; pointer-events:none; filter:grayscale(.5); }
 
   main { flex:1; display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:12px; min-height:0; }
-  @media (max-width:820px) { main { grid-template-columns:1fr; } }
 
   .panel { background:var(--panel); border-radius:var(--radius); padding:14px; display:flex; flex-direction:column; min-height:0; }
   .panel h2 { margin:0 0 10px; font-size:14px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.5px; display:flex; align-items:center; gap:8px; }
   .badge { font-size:11px; padding:2px 8px; border-radius:20px; background:#3a2330; color:var(--danger); }
   .badge.on { background:#15302b; color:var(--accent); }
 
-  .cam-wrap { flex:1; background:#000; border-radius:10px; display:flex; align-items:center; justify-content:center; overflow:hidden; position:relative; }
+  .cam-wrap { flex:1; background:#000; border-radius:10px; display:flex; align-items:center; justify-content:center; overflow:hidden; position:relative; min-height:200px; }
   .cam-wrap img { width:100%; height:100%; object-fit:contain; }
   .cam-placeholder { color:var(--muted); font-size:14px; text-align:center; padding:20px; }
   .fps { position:absolute; top:8px; right:10px; font-size:11px; color:var(--accent); font-family:monospace; background:rgba(0,0,0,.5); padding:2px 6px; border-radius:6px; }
@@ -47,53 +63,84 @@
   .group { background:var(--panel-2); border-radius:12px; padding:12px; }
   .group-title { font-size:13px; color:var(--muted); margin-bottom:10px; }
 
-  .dpad { display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr); gap:8px; max-width:260px; margin:0 auto; }
+  .dpad { display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr); gap:8px; max-width:280px; margin:0 auto; }
   .dpad .up{grid-area:1/2;} .dpad .left{grid-area:2/1;} .dpad .stop{grid-area:2/2;} .dpad .right{grid-area:2/3;} .dpad .down{grid-area:3/2;}
 
-  button.btn { background:var(--panel); color:var(--text); border:1px solid #354259; border-radius:12px; padding:16px; font-size:20px; font-weight:700; cursor:pointer; user-select:none; transition:background .08s,transform .08s; touch-action:none; }
+  button.btn {
+    background:var(--panel); color:var(--text); border:1px solid #354259; border-radius:12px;
+    padding:16px; font-size:20px; font-weight:700; cursor:pointer;
+    transition:background .08s,transform .08s;
+    /* block mobile long-press selection / callout / context menu */
+    -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; touch-action:none;
+  }
   button.btn:active, button.btn.pressed { background:var(--accent-press); border-color:var(--accent); transform:scale(.96); }
   button.btn.stop { background:#3a2330; border-color:#5a2a3a; color:var(--danger); }
   .row { display:flex; gap:8px; }
   .row button.btn { flex:1; font-size:15px; padding:14px; }
   .axis-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
-  .axis-row .label { width:70px; font-size:14px; }
+  .axis-row .label { width:64px; font-size:14px; }
   .axis-row button.btn { flex:1; padding:12px; font-size:18px; }
   .toggle { width:100%; padding:16px; font-size:16px; }
   .toggle.active { background:var(--accent-press); border-color:var(--accent); color:#fff; }
-  .log { font-size:11px; color:var(--muted); font-family:monospace; height:48px; overflow-y:auto; background:#0b0f16; border-radius:8px; padding:6px 8px; }
+  .log { font-size:11px; color:var(--muted); font-family:monospace; height:48px; overflow-y:auto; background:#0b0f16; border-radius:8px; padding:6px 8px; -webkit-user-select:text; user-select:text; }
+
+  /* ---------- responsive ---------- */
+  /* tablet / small laptop: stack camera over controls, allow page scroll */
+  @media (max-width:880px) {
+    body { overflow:auto; }
+    main { display:flex; flex-direction:column; gap:12px; }
+    .cam-wrap { min-height:42vh; }
+    .ctrl-scroll { overflow:visible; }
+    .log { height:60px; }
+  }
+  /* phones */
+  @media (max-width:560px) {
+    header { padding:10px 12px; gap:8px; }
+    header h1 { font-size:15px; width:100%; }
+    .status { margin-left:0; width:100%; justify-content:flex-start; }
+    .cfg.url { flex:1; min-width:0; width:auto; }
+    .carbar { padding:8px 12px; }
+    main { padding:10px; }
+    .panel { padding:12px; }
+    .dpad { max-width:none; }            /* full-width D-pad for easier touch */
+    button.btn { padding:18px; }
+    .axis-row .label { width:56px; font-size:13px; }
+  }
 </style>
 </head>
 <body>
   <header>
     <h1>🤖 ESP32 Robot (Cloud)</h1>
     <div class="status">
-      <input id="cfgUrl"   class="cfg url"   placeholder="wss://โดเมน/ws" />
-      <input id="cfgToken" class="cfg token" placeholder="token (ถ้ามี)" />
-      <button class="btn" style="padding:6px 10px;font-size:13px" onclick="applyConfig()">เชื่อมต่อ</button>
-      <span class="dot" id="dot"></span><span id="statusText">ไม่ได้เชื่อมต่อ</span>
+      <input id="cfgUrl"   class="cfg url"   placeholder="wss://your-domain/ws" />
+      <input id="cfgToken" class="cfg token" placeholder="token (optional)" />
+      <button class="btn" style="padding:6px 10px;font-size:13px" onclick="applyConfig()">Connect</button>
+      <span class="dot" id="dot"></span><span id="statusText">Disconnected</span>
     </div>
   </header>
 
   <div class="carbar" id="carbar">
-    <span class="lbl">เลือกคัน:</span>
-    <!-- ปุ่มคันถูกสร้างด้วย JS -->
+    <span class="lbl">Select car:</span>
+    <!-- car buttons are generated by JS -->
   </div>
 
   <main>
     <section class="panel">
-      <h2>📷 กล้อง <span class="badge" id="camBadge">camera: offline</span></h2>
+      <h2>📷 Camera <span class="badge" id="camBadge">camera: offline</span></h2>
       <div class="cam-wrap">
-        <div class="cam-placeholder" id="camPlaceholder">รอภาพจาก ESP32-CAM…<br>(เชื่อม relay แล้วเปิดบอร์ดกล้อง)</div>
+        <div class="cam-placeholder" id="camPlaceholder">Waiting for ESP32-CAM…<br>(connect the relay, then power on the camera board)</div>
         <img id="cam" alt="" style="display:none" />
         <div class="fps" id="fps" style="display:none">0 fps</div>
       </div>
     </section>
 
     <section class="panel">
-      <h2>🎮 แผงควบคุม <span class="badge" id="robotBadge">robot: offline</span></h2>
+      <h2>🎮 Controls <span class="badge" id="robotBadge">robot: offline</span></h2>
       <div class="ctrl-scroll">
+        <div id="driveNotice"></div>
+        <div id="controlsBox">
         <div class="group">
-          <div class="group-title">การเคลื่อนที่ (กดค้าง=เดิน, ปล่อย=หยุด)</div>
+          <div class="group-title">Movement (hold to move, release to stop)</div>
           <div class="dpad">
             <button class="btn up"    data-hold="forward">▲</button>
             <button class="btn left"  data-hold="left">◀</button>
@@ -103,71 +150,96 @@
           </div>
         </div>
         <div class="group">
-          <div class="group-title">ไฟ</div>
-          <button class="btn toggle" id="lightBtn" onclick="toggleLight()">💡 เปิด/ปิดไฟ</button>
+          <div class="group-title">Light</div>
+          <button class="btn toggle" id="lightBtn" onclick="toggleLight()">💡 Toggle Light</button>
         </div>
         <div class="group">
-          <div class="group-title">Gripper (3 แกน)</div>
-          <div class="axis-row"><span class="label">ฐานหมุน</span><button class="btn" data-hold="base_minus">−</button><button class="btn" data-hold="base_plus">+</button></div>
-          <div class="axis-row"><span class="label">แขน</span><button class="btn" data-hold="arm_minus">−</button><button class="btn" data-hold="arm_plus">+</button></div>
-          <div class="axis-row"><span class="label">ข้อมือ</span><button class="btn" data-hold="wrist_minus">−</button><button class="btn" data-hold="wrist_plus">+</button></div>
+          <div class="group-title">Gripper (3 axes)</div>
+          <div class="axis-row"><span class="label">Base</span><button class="btn" data-hold="base_minus">−</button><button class="btn" data-hold="base_plus">+</button></div>
+          <div class="axis-row"><span class="label">Arm</span><button class="btn" data-hold="arm_minus">−</button><button class="btn" data-hold="arm_plus">+</button></div>
+          <div class="axis-row"><span class="label">Wrist</span><button class="btn" data-hold="wrist_minus">−</button><button class="btn" data-hold="wrist_plus">+</button></div>
         </div>
         <div class="group">
-          <div class="group-title">มือจับ (Gripper)</div>
-          <div class="row"><button class="btn" data-cmd="grip_open">✋ ปล่อย</button><button class="btn" data-cmd="grip_close">🤏 หยิบ</button></div>
+          <div class="group-title">Gripper Claw</div>
+          <div class="row"><button class="btn" data-cmd="grip_open">✋ Open</button><button class="btn" data-cmd="grip_close">🤏 Grip</button></div>
         </div>
+        </div><!-- /controlsBox -->
         <div class="log" id="log"></div>
       </div>
     </section>
   </main>
 
 <script>
-/* ====== config: เดาค่าเริ่มต้นจากโดเมนที่ host อยู่ ====== */
+/* ====== config: default to the domain this page is hosted on ====== */
 const proto = location.protocol === 'https:' ? 'wss' : 'ws';
 let RELAY = localStorage.getItem('relayUrl') || `${proto}://${location.host}/ws`;
 let TOKEN = localStorage.getItem('relayToken') || '';
 let ws = null, lightOn = false;
 
-/* ====== รายชื่อรถ: คันที่ N -> room "carN" (ต้องตรงกับ ROOM ใน ESP32) ====== */
+/* ====== cars: car N -> room "carN" (must match ROOM in the ESP32 sketch) ====== */
 const NUM_CARS = 7;
 const CARS = Array.from({length: NUM_CARS}, (_, i) => ({ n: i + 1, room: `car${i + 1}` }));
 let curCar = parseInt(localStorage.getItem('relayCar') || '1', 10);
 let ROOM = (CARS.find(c => c.n === curCar) || CARS[0]).room;
+let isDriver = false;        // are we the driver of this car? (relay decides)
+let occupied = [];           // rooms that already have a driver
 
 const $ = id => document.getElementById(id);
 const dot = $('dot'), statusText = $('statusText');
 function logMsg(t){ const el=$('log'); el.innerHTML=`<div>${new Date().toLocaleTimeString()} ${t}</div>`+el.innerHTML; }
 
-/* ====== กล้อง: นับ fps ====== */
+/* ====== camera: fps counter ====== */
 let frames = 0, lastImgUrl = null;
 setInterval(() => { if ($('fps').style.display!=='none'){ $('fps').textContent = frames+' fps'; frames=0; } }, 1000);
 
-/* ====== WebSocket ไป relay (เป็น controller) ====== */
+/* ====== WebSocket to relay (as controller) ====== */
 function connect() {
   if (ws) { try { ws.close(); } catch(e){} }
   const u = `${RELAY}?room=${encodeURIComponent(ROOM)}&role=controller${TOKEN?`&token=${encodeURIComponent(TOKEN)}`:''}`;
-  try { ws = new WebSocket(u); } catch(e){ statusText.textContent='URL ไม่ถูกต้อง'; return; }
+  try { ws = new WebSocket(u); } catch(e){ statusText.textContent='Invalid URL'; return; }
   ws.binaryType = 'blob';
 
-  ws.onopen = () => { dot.classList.add('on'); statusText.textContent=`เชื่อม relay แล้ว (คัน ${curCar})`; logMsg('✓ '+RELAY+' room='+ROOM); };
-  ws.onclose = () => { dot.classList.remove('on'); statusText.textContent='หลุดการเชื่อมต่อ'; setBadge('robot',false); setBadge('camera',false); };
-  ws.onerror = () => { statusText.textContent='เชื่อมต่อ relay ล้มเหลว'; };
+  ws.onopen = () => { dot.classList.add('on'); logMsg('✓ '+RELAY+' room='+ROOM); };  // wait for relay to send role
+  ws.onclose = () => { dot.classList.remove('on'); statusText.textContent='Disconnected'; isDriver=false; applyDriveMode(); setBadge('robot',false); setBadge('camera',false); };
+  ws.onerror = () => { statusText.textContent='Relay connection failed'; };
 
   ws.onmessage = e => {
-    if (e.data instanceof Blob) {                 // เฟรมกล้อง (binary JPEG)
+    if (e.data instanceof Blob) {                 // camera frame (binary JPEG)
       const url = URL.createObjectURL(e.data);
       const img = $('cam');
       img.onload = () => { if (lastImgUrl) URL.revokeObjectURL(lastImgUrl); lastImgUrl = url; };
       img.src = url; img.style.display='block'; $('camPlaceholder').style.display='none'; $('fps').style.display='block';
       frames++;
-    } else {                                       // ข้อความ text (telemetry / สถานะ)
+    } else {                                       // text message (telemetry / status)
       try {
         const m = JSON.parse(e.data);
-        if (m.sys === 'status') setBadge(m.role, m.online);
+        if (m.sys === 'status')      setBadge(m.role, m.online);
+        else if (m.sys === 'role')  { isDriver = m.driver; applyDriveMode(); updateCarBar(); }
+        else if (m.sys === 'cars')  { occupied = m.occupied || []; updateCarBar(); }
         else logMsg('← '+e.data);
       } catch { logMsg('← '+e.data); }
     }
   };
+}
+
+/* ====== driver / spectator ====== */
+function applyDriveMode() {
+  const connected = ws && ws.readyState === WebSocket.OPEN;
+  const locked = connected && !isDriver;            // connected but not the driver = spectator
+  $('controlsBox').classList.toggle('controls-locked', !isDriver);
+  const note = $('driveNotice');
+  note.className = locked ? 'spectator' : '';
+  note.textContent = locked ? `🔒 Car ${curCar} is already being controlled — view only` : '';
+  if (connected) statusText.textContent = isDriver ? `🚗 Controlling car ${curCar}` : `👀 Viewing car ${curCar} (spectator)`;
+}
+
+function updateCarBar() {
+  document.querySelectorAll('.car').forEach(el => {
+    const n = +el.dataset.car, room = `car${n}`, mine = n === curCar;
+    const occByOther = occupied.includes(room) && !(mine && isDriver);   // taken, and not by us
+    el.classList.toggle('active', mine);
+    el.classList.toggle('locked', occByOther);
+  });
 }
 
 function setBadge(role, online) {
@@ -175,14 +247,14 @@ function setBadge(role, online) {
   if (!el) return;
   el.textContent = `${role}: ${online?'online':'offline'}`;
   el.classList.toggle('on', online);
-  // ไฟจุดบนปุ่มคันที่กำลังเลือก = สถานะ robot ของคันนั้น
+  // dot on the currently selected car button = that car's robot status
   if (role==='robot') { const d=document.querySelector(`.car[data-car="${curCar}"] .cdot`); if (d) d.classList.toggle('on', online); }
 }
 
 function send(cmd, value) {
   const payload = JSON.stringify(value===undefined ? {cmd} : {cmd, value});
   if (ws && ws.readyState===WebSocket.OPEN) { ws.send(payload); logMsg('↗ '+payload); }
-  else logMsg('⚠ ยังไม่เชื่อมต่อ: '+payload);
+  else logMsg('⚠ not connected: '+payload);
 }
 
 function applyConfig() {
@@ -192,39 +264,40 @@ function applyConfig() {
   connect();
 }
 
-/* ====== เลือกคัน ====== */
+/* ====== car selection ====== */
 function buildCarBar() {
   const bar = $('carbar');
   CARS.forEach(c => {
     const b = document.createElement('button');
     b.className = 'car' + (c.n===curCar ? ' active' : '');
     b.dataset.car = c.n;
-    b.innerHTML = `<span class="cdot"></span>คัน ${c.n}`;
+    b.innerHTML = `<span class="cdot"></span>Car ${c.n}<span class="lock">🔒</span>`;
     b.onclick = () => selectCar(c.n);
     bar.appendChild(b);
   });
 }
 
 function selectCar(n) {
-  if (n === curCar && ws && ws.readyState === WebSocket.OPEN) return;  // เลือกคันเดิม ไม่ทำอะไร
-  send('move','stop');                       // ⚠️ สั่งหยุดคันเดิมก่อนสลับ (กันวิ่งค้าง)
+  if (n === curCar && ws && ws.readyState === WebSocket.OPEN) return;  // same car, do nothing
+  send('move','stop');                       // ⚠️ stop the current car before switching (avoid runaway)
   curCar = n;
   localStorage.setItem('relayCar', String(n));
   ROOM = (CARS.find(c => c.n === n) || CARS[0]).room;
 
-  // อัปเดตปุ่ม active + รีเซ็ตสถานะ/ภาพกล้อง
+  // update active button + reset status / camera
   document.querySelectorAll('.car').forEach(el => el.classList.toggle('active', +el.dataset.car===n));
   document.querySelectorAll('.car .cdot').forEach(d => d.classList.remove('on'));
   setBadge('robot',false); setBadge('camera',false);
   const img=$('cam'); img.style.display='none'; $('camPlaceholder').style.display='block'; $('fps').style.display='none';
   lightOn=false; $('lightBtn').classList.remove('active');
+  isDriver=false; applyDriveMode(); updateCarBar();   // lock controls until relay confirms role
 
-  connect();   // ต่อ relay ใหม่ที่ room ของคันที่เลือก
+  connect();   // reconnect to the selected car's room
 }
 
 function toggleLight(){ lightOn=!lightOn; $('lightBtn').classList.toggle('active',lightOn); send('light', lightOn?'on':'off'); }
 
-/* ====== ผูกปุ่ม ====== */
+/* ====== button bindings ====== */
 document.querySelectorAll('[data-cmd]').forEach(b => b.addEventListener('click', () => send(b.dataset.cmd)));
 document.querySelectorAll('[data-hold]').forEach(b => {
   const action=b.dataset.hold;
@@ -235,12 +308,15 @@ document.querySelectorAll('[data-hold]').forEach(b => {
   b.addEventListener('pointerleave',stop);
   b.addEventListener('pointercancel',stop);
 });
+// block the long-press context menu on control buttons / car chips (mobile)
+document.addEventListener('contextmenu', e => { if (e.target.closest('.btn,.car')) e.preventDefault(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden) send('move','stop'); });
 
-/* ====== เริ่ม ====== */
+/* ====== start ====== */
 $('cfgUrl').value=RELAY; $('cfgToken').value=TOKEN;
 buildCarBar();
-connect();   // ต่ออัตโนมัติที่คันที่จำไว้ล่าสุด
+applyDriveMode(); updateCarBar();   // keep controls locked until relay confirms we're the driver
+connect();   // auto-connect to the last selected car
 </script>
 </body>
 </html>
