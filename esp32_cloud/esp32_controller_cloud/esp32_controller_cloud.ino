@@ -22,7 +22,7 @@ const char* WIFI_PASS = "0954312751";
 const char* RELAY_HOST = "your-domain.com";   // โดเมนที่ deploy (ไม่ต้องใส่ https://)
 const int   RELAY_PORT = 443;                 // 443 = WSS
 const bool  RELAY_TLS  = true;                // true = wss (ผ่าน Dokploy/HTTPS)
-const char* ROOM       = "robot1";
+const char* ROOM       = "car1";              // ⚠️ คันที่ N ตั้งเป็น "carN" — แต่ละคันไม่ซ้ำกัน (car1..car7)
 const char* TOKEN      = "";                  // ใส่ให้ตรงกับ AUTH_TOKEN ถ้าตั้งไว้
 
 /* ===================== 3) ขา (แก้ตามการต่อจริง) ===================== */

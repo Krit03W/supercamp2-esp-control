@@ -22,7 +22,7 @@ const char* WIFI_PASS = "0954312751";
 const char* RELAY_HOST = "your-domain.com";
 const int   RELAY_PORT = 443;
 const bool  RELAY_TLS  = true;
-const char* ROOM       = "robot1";
+const char* ROOM       = "car1";              // ⚠️ ต้องตรงกับ ESP32 ตัวคุมของคันเดียวกัน (car1..car7)
 const char* TOKEN      = "";
 
 /* ===================== คุณภาพ/อัตราเฟรม ===================== */

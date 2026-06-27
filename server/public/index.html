@@ -20,7 +20,15 @@
   .dot { width:10px; height:10px; border-radius:50%; background:var(--danger); transition:background .2s; }
   .dot.on { background:var(--accent); box-shadow:0 0 8px var(--accent); }
   .cfg { background:var(--panel-2); color:var(--text); border:1px solid #333; border-radius:8px; padding:5px 8px; font-size:12px; }
-  .cfg.url { width:230px; } .cfg.room { width:90px; } .cfg.token { width:90px; }
+  .cfg.url { width:230px; } .cfg.token { width:90px; }
+
+  /* แถบเลือกคัน */
+  .carbar { display:flex; align-items:center; gap:8px; padding:8px 16px; background:var(--panel-2); border-bottom:1px solid #000; overflow-x:auto; }
+  .carbar .lbl { font-size:13px; color:var(--muted); white-space:nowrap; }
+  .car { display:flex; align-items:center; gap:6px; padding:7px 14px; border-radius:10px; border:1px solid #354259; background:var(--panel); color:var(--text); font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap; transition:background .1s,border-color .1s; }
+  .car .cdot { width:8px; height:8px; border-radius:50%; background:var(--danger); }
+  .car .cdot.on { background:var(--accent); box-shadow:0 0 6px var(--accent); }
+  .car.active { background:var(--accent-press); border-color:var(--accent); color:#fff; }
 
   main { flex:1; display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:12px; min-height:0; }
   @media (max-width:820px) { main { grid-template-columns:1fr; } }
@@ -60,12 +68,16 @@
     <h1>🤖 ESP32 Robot (Cloud)</h1>
     <div class="status">
       <input id="cfgUrl"   class="cfg url"   placeholder="wss://โดเมน/ws" />
-      <input id="cfgRoom"  class="cfg room"  placeholder="room" />
       <input id="cfgToken" class="cfg token" placeholder="token (ถ้ามี)" />
       <button class="btn" style="padding:6px 10px;font-size:13px" onclick="applyConfig()">เชื่อมต่อ</button>
       <span class="dot" id="dot"></span><span id="statusText">ไม่ได้เชื่อมต่อ</span>
     </div>
   </header>
+
+  <div class="carbar" id="carbar">
+    <span class="lbl">เลือกคัน:</span>
+    <!-- ปุ่มคันถูกสร้างด้วย JS -->
+  </div>
 
   <main>
     <section class="panel">
@@ -113,9 +125,14 @@
 /* ====== config: เดาค่าเริ่มต้นจากโดเมนที่ host อยู่ ====== */
 const proto = location.protocol === 'https:' ? 'wss' : 'ws';
 let RELAY = localStorage.getItem('relayUrl') || `${proto}://${location.host}/ws`;
-let ROOM  = localStorage.getItem('relayRoom') || 'robot1';
 let TOKEN = localStorage.getItem('relayToken') || '';
 let ws = null, lightOn = false;
+
+/* ====== รายชื่อรถ: คันที่ N -> room "carN" (ต้องตรงกับ ROOM ใน ESP32) ====== */
+const NUM_CARS = 7;
+const CARS = Array.from({length: NUM_CARS}, (_, i) => ({ n: i + 1, room: `car${i + 1}` }));
+let curCar = parseInt(localStorage.getItem('relayCar') || '1', 10);
+let ROOM = (CARS.find(c => c.n === curCar) || CARS[0]).room;
 
 const $ = id => document.getElementById(id);
 const dot = $('dot'), statusText = $('statusText');
@@ -132,7 +149,7 @@ function connect() {
   try { ws = new WebSocket(u); } catch(e){ statusText.textContent='URL ไม่ถูกต้อง'; return; }
   ws.binaryType = 'blob';
 
-  ws.onopen = () => { dot.classList.add('on'); statusText.textContent='เชื่อม relay แล้ว'; logMsg('✓ '+RELAY+' room='+ROOM); };
+  ws.onopen = () => { dot.classList.add('on'); statusText.textContent=`เชื่อม relay แล้ว (คัน ${curCar})`; logMsg('✓ '+RELAY+' room='+ROOM); };
   ws.onclose = () => { dot.classList.remove('on'); statusText.textContent='หลุดการเชื่อมต่อ'; setBadge('robot',false); setBadge('camera',false); };
   ws.onerror = () => { statusText.textContent='เชื่อมต่อ relay ล้มเหลว'; };
 
@@ -158,6 +175,8 @@ function setBadge(role, online) {
   if (!el) return;
   el.textContent = `${role}: ${online?'online':'offline'}`;
   el.classList.toggle('on', online);
+  // ไฟจุดบนปุ่มคันที่กำลังเลือก = สถานะ robot ของคันนั้น
+  if (role==='robot') { const d=document.querySelector(`.car[data-car="${curCar}"] .cdot`); if (d) d.classList.toggle('on', online); }
 }
 
 function send(cmd, value) {
@@ -167,11 +186,40 @@ function send(cmd, value) {
 }
 
 function applyConfig() {
-  const u=$('cfgUrl').value.trim(), r=$('cfgRoom').value.trim(), t=$('cfgToken').value.trim();
+  const u=$('cfgUrl').value.trim(), t=$('cfgToken').value.trim();
   if (u){ RELAY=u; localStorage.setItem('relayUrl',u); }
-  if (r){ ROOM=r; localStorage.setItem('relayRoom',r); }
   TOKEN=t; localStorage.setItem('relayToken',t);
   connect();
+}
+
+/* ====== เลือกคัน ====== */
+function buildCarBar() {
+  const bar = $('carbar');
+  CARS.forEach(c => {
+    const b = document.createElement('button');
+    b.className = 'car' + (c.n===curCar ? ' active' : '');
+    b.dataset.car = c.n;
+    b.innerHTML = `<span class="cdot"></span>คัน ${c.n}`;
+    b.onclick = () => selectCar(c.n);
+    bar.appendChild(b);
+  });
+}
+
+function selectCar(n) {
+  if (n === curCar && ws && ws.readyState === WebSocket.OPEN) return;  // เลือกคันเดิม ไม่ทำอะไร
+  send('move','stop');                       // ⚠️ สั่งหยุดคันเดิมก่อนสลับ (กันวิ่งค้าง)
+  curCar = n;
+  localStorage.setItem('relayCar', String(n));
+  ROOM = (CARS.find(c => c.n === n) || CARS[0]).room;
+
+  // อัปเดตปุ่ม active + รีเซ็ตสถานะ/ภาพกล้อง
+  document.querySelectorAll('.car').forEach(el => el.classList.toggle('active', +el.dataset.car===n));
+  document.querySelectorAll('.car .cdot').forEach(d => d.classList.remove('on'));
+  setBadge('robot',false); setBadge('camera',false);
+  const img=$('cam'); img.style.display='none'; $('camPlaceholder').style.display='block'; $('fps').style.display='none';
+  lightOn=false; $('lightBtn').classList.remove('active');
+
+  connect();   // ต่อ relay ใหม่ที่ room ของคันที่เลือก
 }
 
 function toggleLight(){ lightOn=!lightOn; $('lightBtn').classList.toggle('active',lightOn); send('light', lightOn?'on':'off'); }
@@ -190,8 +238,9 @@ document.querySelectorAll('[data-hold]').forEach(b => {
 document.addEventListener('visibilitychange', () => { if (document.hidden) send('move','stop'); });
 
 /* ====== เริ่ม ====== */
-$('cfgUrl').value=RELAY; $('cfgRoom').value=ROOM; $('cfgToken').value=TOKEN;
-connect();   // ลองต่ออัตโนมัติด้วยค่า default
+$('cfgUrl').value=RELAY; $('cfgToken').value=TOKEN;
+buildCarBar();
+connect();   // ต่ออัตโนมัติที่คันที่จำไว้ล่าสุด
 </script>
 </body>
 </html>
