@@ -195,7 +195,7 @@
         </div>
         <div class="group">
           <div class="group-title">Gripper Claw</div>
-          <div class="row"><button class="btn" data-cmd="grip_open">✋ Open <span style="font-size:11px;opacity:.65">(Q)</span></button><button class="btn" data-cmd="grip_close">🤏 Grip <span style="font-size:11px;opacity:.65">(G)</span></button></div>
+          <div class="row"><button class="btn" data-pulse="grip_open">✋ Open <span style="font-size:11px;opacity:.65">(Q)</span></button><button class="btn" data-pulse="grip_close">🤏 Grip <span style="font-size:11px;opacity:.65">(G)</span></button></div>
         </div>
         </div><!-- /controlsBox -->
         <div class="log" id="log"></div>
@@ -324,7 +324,7 @@ function buildCarBar() {
 
 function selectCar(n) {
   if (n === curCar && ws && ws.readyState === WebSocket.OPEN) return;  // same car, do nothing
-  clearDrive();                              // ⚠️ stop the current car before switching (avoid runaway)
+  clearState();                              // ⚠️ stop the current car before switching (avoid runaway)
   curCar = n;
   localStorage.setItem('relayCar', String(n));
   ROOM = (CARS.find(c => c.n === n) || CARS[0]).room;
@@ -341,7 +341,7 @@ function selectCar(n) {
   connect();   // reconnect to the selected car's room
 }
 
-function toggleLight(){ lightOn=!lightOn; $('lightBtn').classList.toggle('active',lightOn); send('light', lightOn?'on':'off'); }
+function toggleLight(){ lightOn=!lightOn; $('lightBtn').classList.toggle('active',lightOn); setBit('light', lightOn); }
 
 /* ====== capture current frame ====== */
 function capture() {
@@ -382,49 +382,37 @@ $('shotClose').addEventListener('click', closeShot);
 $('shotModal').addEventListener('click', e => { if (e.target === $('shotModal')) closeShot(); });
 document.addEventListener('keydown', e => { if (e.key==='Escape') closeShot(); });
 
-/* ====== movement: combined drive (multi-key, realtime) ====== */
-const active = new Set();            // active directions: forward/backward/left/right
-let driveT = 0, driveS = 0;
+/* ====== unified button-state array (index ตรงกับ ESP32) ====== */
+const BTN = ['forward','backward','left','right','base_minus','base_plus',
+             'arm_minus','arm_plus','wrist_minus','wrist_plus',
+             'grip_open','grip_close','light','collect'];
+const I = {}; BTN.forEach((n,i)=> I[n]=i);
+let bstate = new Array(BTN.length).fill(0);
 
-function sendDrive() {               // ส่ง throttle+steer รวมกัน (ไม่ log กัน keepalive ท่วม)
-  if (isDriver && ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({cmd:'drive', t:driveT, s:driveS}));
+function sendState(){    // ส่ง array เดียวรวมทุกปุ่ม (ไม่ log กัน keepalive ท่วม)
+  if (isDriver && ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({b: bstate}));
 }
-function updateDrive() {
-  const t = (active.has('forward')?1:0) - (active.has('backward')?1:0);
-  const s = (active.has('right')?1:0)   - (active.has('left')?1:0);
-  if (t !== driveT || s !== driveS) { driveT = t; driveS = s; sendDrive(); }
-}
-function setDir(dir, on) { if (on) active.add(dir); else active.delete(dir); updateDrive(); }
-function clearDrive() { active.clear(); if (driveT||driveS){ driveT=driveS=0; sendDrive(); } }
-// keepalive: resend while moving so ESP32's safety-timeout doesn't stop us
-setInterval(() => { if (driveT !== 0 || driveS !== 0) sendDrive(); }, 300);
-function dirBtn(dir){ return document.querySelector(`[data-dir="${dir}"]`); }
+function setBit(name, on){ const v = on?1:0; if (bstate[I[name]] !== v){ bstate[I[name]] = v; sendState(); } }
+function pulseBit(name){ bstate[I[name]] = 1; sendState(); setTimeout(() => { bstate[I[name]] = 0; sendState(); }, 120); }
+function clearState(){ if (bstate.some(x=>x)){ bstate.fill(0); sendState(); } }
+// keepalive: resend ขณะมีปุ่มกดอยู่ กัน ESP32 timeout
+setInterval(() => { if (bstate.some(x=>x)) sendState(); }, 250);
+function btnEl(name){ return document.querySelector(`[data-dir="${name}"],[data-step="${name}"]`); }
 
-// arrow buttons (multi-touch friendly)
-document.querySelectorAll('[data-dir]').forEach(b => {
-  const dir = b.dataset.dir;
-  const on  = e => { e.preventDefault(); b.classList.add('pressed'); setDir(dir, true); };
-  const off = () => { b.classList.remove('pressed'); setDir(dir, false); };
+// ปุ่มกดค้าง (ทิศทาง + gripper axes) = level 1/0, รองรับ multi-touch
+document.querySelectorAll('[data-dir],[data-step]').forEach(b => {
+  const name = b.dataset.dir || b.dataset.step;
+  const on  = e => { e.preventDefault(); b.classList.add('pressed'); setBit(name, true); };
+  const off = () => { b.classList.remove('pressed'); setBit(name, false); };
   b.addEventListener('pointerdown', on);
   b.addEventListener('pointerup', off);
   b.addEventListener('pointerleave', off);
   b.addEventListener('pointercancel', off);
 });
 
-// gripper axis step buttons (repeat while held)
-document.querySelectorAll('[data-step]').forEach(b => {
-  const val = b.dataset.step; let timer = null;
-  const start = e => { e.preventDefault(); b.classList.add('pressed'); send('move', val); timer = setInterval(() => send('move', val), 200); };
-  const stop  = () => { b.classList.remove('pressed'); if (timer) { clearInterval(timer); timer = null; } };
-  b.addEventListener('pointerdown', start);
-  b.addEventListener('pointerup', stop);
-  b.addEventListener('pointerleave', stop);
-  b.addEventListener('pointercancel', stop);
-});
-
-// single-shot commands (grip open/close) + collect-rock shortcut
-document.querySelectorAll('[data-cmd]').forEach(b => b.addEventListener('click', () => send(b.dataset.cmd)));
-function collectRock(){ send('collect'); }
+// ปุ่มกดครั้งเดียว (grip open/close, collect) = pulse (edge)
+document.querySelectorAll('[data-pulse]').forEach(b => b.addEventListener('click', () => pulseBit(b.dataset.pulse)));
+function collectRock(){ pulseBit('collect'); }
 $('collectBtn').addEventListener('click', collectRock);
 
 // keyboard: WASD = drive, E = collect, Q/G = grip, F = light
@@ -432,21 +420,21 @@ const KEYMAP = { w:'forward', s:'backward', a:'left', d:'right' };
 document.addEventListener('keydown', e => {
   if (e.repeat || /input|textarea/i.test(e.target.tagName)) return;
   const k = e.key.toLowerCase();
-  if (KEYMAP[k])      { e.preventDefault(); setDir(KEYMAP[k], true); dirBtn(KEYMAP[k])?.classList.add('pressed'); }
+  if (KEYMAP[k])      { e.preventDefault(); setBit(KEYMAP[k], true); btnEl(KEYMAP[k])?.classList.add('pressed'); }
   else if (k === 'e') collectRock();
-  else if (k === 'q') send('grip_open');
-  else if (k === 'g') send('grip_close');
+  else if (k === 'q') pulseBit('grip_open');
+  else if (k === 'g') pulseBit('grip_close');
   else if (k === 'f') toggleLight();
 });
 document.addEventListener('keyup', e => {
   const k = e.key.toLowerCase();
-  if (KEYMAP[k]) { setDir(KEYMAP[k], false); dirBtn(KEYMAP[k])?.classList.remove('pressed'); }
+  if (KEYMAP[k]) { setBit(KEYMAP[k], false); btnEl(KEYMAP[k])?.classList.remove('pressed'); }
 });
-window.addEventListener('blur', clearDrive);   // lost focus -> stop
+window.addEventListener('blur', clearState);   // lost focus -> stop
 
 // block the long-press context menu on control buttons / car chips (mobile)
 document.addEventListener('contextmenu', e => { if (e.target.closest('.btn,.car')) e.preventDefault(); });
-document.addEventListener('visibilitychange', () => { if (document.hidden) clearDrive(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) clearState(); });
 
 /* ====== start ====== */
 $('cfgUrl').value=RELAY; $('cfgToken').value=TOKEN;
