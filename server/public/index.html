@@ -171,28 +171,31 @@
         <div id="driveNotice"></div>
         <div id="controlsBox">
         <div class="group">
-          <div class="group-title">Movement (hold to move, release to stop)</div>
+          <div class="group-title">Movement — WASD keys or buttons (press 2 for diagonal)</div>
           <div class="dpad">
-            <button class="btn up"    data-hold="forward">▲</button>
-            <button class="btn left"  data-hold="left">◀</button>
-            <button class="btn stop"  data-cmd="stop">■</button>
-            <button class="btn right" data-hold="right">▶</button>
-            <button class="btn down"  data-hold="backward">▼</button>
+            <button class="btn up"    data-dir="forward">▲</button>
+            <button class="btn left"  data-dir="left">◀</button>
+            <button class="btn right" data-dir="right">▶</button>
+            <button class="btn down"  data-dir="backward">▼</button>
           </div>
         </div>
         <div class="group">
+          <div class="group-title">Shortcuts</div>
+          <button class="btn toggle" id="collectBtn">🪨 Collect Rock <span style="font-size:12px;opacity:.65">(E)</span></button>
+        </div>
+        <div class="group">
           <div class="group-title">Light</div>
-          <button class="btn toggle" id="lightBtn" onclick="toggleLight()">💡 Toggle Light</button>
+          <button class="btn toggle" id="lightBtn" onclick="toggleLight()">💡 Toggle Light <span style="font-size:12px;opacity:.65">(F)</span></button>
         </div>
         <div class="group">
           <div class="group-title">Gripper (3 axes)</div>
-          <div class="axis-row"><span class="label">Base</span><button class="btn" data-hold="base_minus">−</button><button class="btn" data-hold="base_plus">+</button></div>
-          <div class="axis-row"><span class="label">Arm</span><button class="btn" data-hold="arm_minus">−</button><button class="btn" data-hold="arm_plus">+</button></div>
-          <div class="axis-row"><span class="label">Wrist</span><button class="btn" data-hold="wrist_minus">−</button><button class="btn" data-hold="wrist_plus">+</button></div>
+          <div class="axis-row"><span class="label">Base</span><button class="btn" data-step="base_minus">−</button><button class="btn" data-step="base_plus">+</button></div>
+          <div class="axis-row"><span class="label">Arm</span><button class="btn" data-step="arm_minus">−</button><button class="btn" data-step="arm_plus">+</button></div>
+          <div class="axis-row"><span class="label">Wrist</span><button class="btn" data-step="wrist_minus">−</button><button class="btn" data-step="wrist_plus">+</button></div>
         </div>
         <div class="group">
           <div class="group-title">Gripper Claw</div>
-          <div class="row"><button class="btn" data-cmd="grip_open">✋ Open</button><button class="btn" data-cmd="grip_close">🤏 Grip</button></div>
+          <div class="row"><button class="btn" data-cmd="grip_open">✋ Open <span style="font-size:11px;opacity:.65">(Q)</span></button><button class="btn" data-cmd="grip_close">🤏 Grip <span style="font-size:11px;opacity:.65">(G)</span></button></div>
         </div>
         </div><!-- /controlsBox -->
         <div class="log" id="log"></div>
@@ -321,7 +324,7 @@ function buildCarBar() {
 
 function selectCar(n) {
   if (n === curCar && ws && ws.readyState === WebSocket.OPEN) return;  // same car, do nothing
-  send('move','stop');                       // ⚠️ stop the current car before switching (avoid runaway)
+  clearDrive();                              // ⚠️ stop the current car before switching (avoid runaway)
   curCar = n;
   localStorage.setItem('relayCar', String(n));
   ROOM = (CARS.find(c => c.n === n) || CARS[0]).room;
@@ -379,20 +382,71 @@ $('shotClose').addEventListener('click', closeShot);
 $('shotModal').addEventListener('click', e => { if (e.target === $('shotModal')) closeShot(); });
 document.addEventListener('keydown', e => { if (e.key==='Escape') closeShot(); });
 
-/* ====== button bindings ====== */
-document.querySelectorAll('[data-cmd]').forEach(b => b.addEventListener('click', () => send(b.dataset.cmd)));
-document.querySelectorAll('[data-hold]').forEach(b => {
-  const action=b.dataset.hold;
-  const start=e=>{ e.preventDefault(); b.classList.add('pressed'); send('move',action); };
-  const stop =e=>{ if(!b.classList.contains('pressed'))return; b.classList.remove('pressed'); send('move','stop'); };
-  b.addEventListener('pointerdown',start);
-  b.addEventListener('pointerup',stop);
-  b.addEventListener('pointerleave',stop);
-  b.addEventListener('pointercancel',stop);
+/* ====== movement: combined drive (multi-key, realtime) ====== */
+const active = new Set();            // active directions: forward/backward/left/right
+let driveT = 0, driveS = 0;
+
+function sendDrive() {               // ส่ง throttle+steer รวมกัน (ไม่ log กัน keepalive ท่วม)
+  if (isDriver && ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({cmd:'drive', t:driveT, s:driveS}));
+}
+function updateDrive() {
+  const t = (active.has('forward')?1:0) - (active.has('backward')?1:0);
+  const s = (active.has('right')?1:0)   - (active.has('left')?1:0);
+  if (t !== driveT || s !== driveS) { driveT = t; driveS = s; sendDrive(); }
+}
+function setDir(dir, on) { if (on) active.add(dir); else active.delete(dir); updateDrive(); }
+function clearDrive() { active.clear(); if (driveT||driveS){ driveT=driveS=0; sendDrive(); } }
+// keepalive: resend while moving so ESP32's safety-timeout doesn't stop us
+setInterval(() => { if (driveT !== 0 || driveS !== 0) sendDrive(); }, 300);
+function dirBtn(dir){ return document.querySelector(`[data-dir="${dir}"]`); }
+
+// arrow buttons (multi-touch friendly)
+document.querySelectorAll('[data-dir]').forEach(b => {
+  const dir = b.dataset.dir;
+  const on  = e => { e.preventDefault(); b.classList.add('pressed'); setDir(dir, true); };
+  const off = () => { b.classList.remove('pressed'); setDir(dir, false); };
+  b.addEventListener('pointerdown', on);
+  b.addEventListener('pointerup', off);
+  b.addEventListener('pointerleave', off);
+  b.addEventListener('pointercancel', off);
 });
+
+// gripper axis step buttons (repeat while held)
+document.querySelectorAll('[data-step]').forEach(b => {
+  const val = b.dataset.step; let timer = null;
+  const start = e => { e.preventDefault(); b.classList.add('pressed'); send('move', val); timer = setInterval(() => send('move', val), 200); };
+  const stop  = () => { b.classList.remove('pressed'); if (timer) { clearInterval(timer); timer = null; } };
+  b.addEventListener('pointerdown', start);
+  b.addEventListener('pointerup', stop);
+  b.addEventListener('pointerleave', stop);
+  b.addEventListener('pointercancel', stop);
+});
+
+// single-shot commands (grip open/close) + collect-rock shortcut
+document.querySelectorAll('[data-cmd]').forEach(b => b.addEventListener('click', () => send(b.dataset.cmd)));
+function collectRock(){ send('collect'); }
+$('collectBtn').addEventListener('click', collectRock);
+
+// keyboard: WASD = drive, E = collect, Q/G = grip, F = light
+const KEYMAP = { w:'forward', s:'backward', a:'left', d:'right' };
+document.addEventListener('keydown', e => {
+  if (e.repeat || /input|textarea/i.test(e.target.tagName)) return;
+  const k = e.key.toLowerCase();
+  if (KEYMAP[k])      { e.preventDefault(); setDir(KEYMAP[k], true); dirBtn(KEYMAP[k])?.classList.add('pressed'); }
+  else if (k === 'e') collectRock();
+  else if (k === 'q') send('grip_open');
+  else if (k === 'g') send('grip_close');
+  else if (k === 'f') toggleLight();
+});
+document.addEventListener('keyup', e => {
+  const k = e.key.toLowerCase();
+  if (KEYMAP[k]) { setDir(KEYMAP[k], false); dirBtn(KEYMAP[k])?.classList.remove('pressed'); }
+});
+window.addEventListener('blur', clearDrive);   // lost focus -> stop
+
 // block the long-press context menu on control buttons / car chips (mobile)
 document.addEventListener('contextmenu', e => { if (e.target.closest('.btn,.car')) e.preventDefault(); });
-document.addEventListener('visibilitychange', () => { if (document.hidden) send('move','stop'); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) clearDrive(); });
 
 /* ====== start ====== */
 $('cfgUrl').value=RELAY; $('cfgToken').value=TOKEN;
