@@ -76,9 +76,16 @@ bool initCamera() {
   c.pixel_format = PIXFORMAT_JPEG;
   c.frame_size = FRAME_SIZE;
   c.jpeg_quality = JPEG_QUALITY;
-  c.fb_count = psramFound() ? 2 : 1;
-  c.fb_location = psramFound() ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM;
-  c.grab_mode = CAMERA_GRAB_LATEST;
+  if (psramFound()) {
+    c.fb_count    = 2;
+    c.fb_location = CAMERA_FB_IN_PSRAM;
+    c.grab_mode   = CAMERA_GRAB_LATEST;       // latency ต่ำ ต้องมี fb_count>=2
+  } else {
+    c.fb_count    = 1;
+    c.fb_location = CAMERA_FB_IN_DRAM;
+    c.grab_mode   = CAMERA_GRAB_WHEN_EMPTY;   // fb_count=1 ต้องใช้โหมดนี้ ไม่งั้น fb_get ค้าง
+  }
+  Serial.println(psramFound() ? "PSRAM: found" : "PSRAM: NOT found (แนะนำเปิด PSRAM ใน Tools)");
 
   if (esp_camera_init(&c) != ESP_OK) return false;
 

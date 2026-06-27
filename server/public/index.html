@@ -107,11 +107,15 @@
   .log { font-size:11px; color:var(--muted); font-family:monospace; height:48px; overflow-y:auto; background:#0b0f16; border-radius:8px; padding:6px 8px; -webkit-user-select:text; user-select:text; }
 
   /* ---------- responsive ---------- */
-  /* tablet / small laptop: stack camera over controls, allow page scroll */
+  /* tablet & phone: switch from full-height flex model to a normal scrolling page
+     (fixes content getting clipped / unreachable at the bottom on mobile) */
   @media (max-width:880px) {
-    body { overflow:auto; }
-    main { display:flex; flex-direction:column; gap:12px; }
-    .cam-wrap { min-height:42vh; }
+    html, body { height:auto; }
+    body { overflow-y:auto; overflow-x:hidden; display:block; }
+    main { display:block; flex:none; padding:12px; }
+    .panel { margin-bottom:12px; min-height:0; }
+    .panel:last-child { margin-bottom:0; }
+    .cam-wrap { flex:none; height:46vh; min-height:240px; }
     .ctrl-scroll { overflow:visible; }
     .log { height:60px; }
   }
@@ -124,6 +128,7 @@
     .carbar { padding:8px 12px; }
     main { padding:10px; }
     .panel { padding:12px; }
+    .cam-wrap { height:38vh; }
     .dpad { max-width:none; }            /* full-width D-pad for easier touch */
     button.btn { padding:18px; }
     .axis-row .label { width:56px; font-size:13px; }
@@ -213,7 +218,7 @@ let TOKEN = localStorage.getItem('relayToken') || '';
 let ws = null, lightOn = false;
 
 /* ====== cars: car N -> room "carN" (must match ROOM in the ESP32 sketch) ====== */
-const NUM_CARS = 7;
+const NUM_CARS = 6;
 const CARS = Array.from({length: NUM_CARS}, (_, i) => ({ n: i + 1, room: `car${i + 1}` }));
 let curCar = parseInt(localStorage.getItem('relayCar') || '1', 10);
 let ROOM = (CARS.find(c => c.n === curCar) || CARS[0]).room;
