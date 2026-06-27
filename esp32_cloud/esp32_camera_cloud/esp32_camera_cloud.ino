@@ -13,22 +13,28 @@
 #include <WiFi.h>
 #include <WebSocketsClient.h>
 #include "esp_camera.h"
+#include "soc/soc.h"            // สำหรับปิด brownout detector
+#include "soc/rtc_cntl_reg.h"
 
 /* ===================== WiFi ===================== */
 const char* WIFI_SSID = "iPhone krit";
 const char* WIFI_PASS = "0954312751";
 
 /* ===================== Relay ===================== */
-const char* RELAY_HOST = "your-domain.com";
+const char* RELAY_HOST = "espcontroll.wijak.org";
 const int   RELAY_PORT = 443;
 const bool  RELAY_TLS  = true;
 const char* ROOM       = "car1";              // ⚠️ ต้องตรงกับ ESP32 ตัวคุมของคันเดียวกัน (car1..car7)
-const char* TOKEN      = "";
+const char* TOKEN      = "AISuperCamp2";
 
 /* ===================== คุณภาพ/อัตราเฟรม ===================== */
 const framesize_t FRAME_SIZE  = FRAMESIZE_QVGA;  // 320x240 (ลด/เพิ่มได้: CIF, VGA)
 const int         JPEG_QUALITY = 14;             // 10(ดี/ใหญ่) .. 30(หยาบ/เล็ก)
 const int         FPS_LIMIT    = 8;              // จำกัดเฟรม/วินาที กันเน็ตตัน
+
+/* ===================== ทิศทางภาพ (แก้กล้องกลับหัว/กลับซ้ายขวา) ===================== */
+const bool FLIP_VERTICAL     = true;   // กล้องกลับหัว -> true (กลับบน-ล่าง)
+const bool MIRROR_HORIZONTAL = true;   // ภาพกลับซ้าย-ขวา -> true  (true ทั้งคู่ = หมุน 180°)
 
 /* ===================== ขากล้อง AI-Thinker ===================== */
 #define PWDN_GPIO_NUM 32
@@ -73,10 +79,20 @@ bool initCamera() {
   c.fb_count = psramFound() ? 2 : 1;
   c.fb_location = psramFound() ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM;
   c.grab_mode = CAMERA_GRAB_LATEST;
-  return esp_camera_init(&c) == ESP_OK;
+
+  if (esp_camera_init(&c) != ESP_OK) return false;
+
+  // ปรับทิศทางภาพที่ระดับ sensor (เบากว่าหมุนภาพทีหลัง)
+  sensor_t* s = esp_camera_sensor_get();
+  if (s) {
+    s->set_vflip(s, FLIP_VERTICAL ? 1 : 0);
+    s->set_hmirror(s, MIRROR_HORIZONTAL ? 1 : 0);
+  }
+  return true;
 }
 
 void setup() {
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);   // ปิด brownout detector กัน boot loop จากไฟกระชาก
   Serial.begin(115200); delay(300);
 
   if (!initCamera()) { Serial.println("camera init FAILED — เช็คสาย/รุ่นบอร์ด"); while (true) delay(1000); }
