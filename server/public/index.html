@@ -59,6 +59,28 @@
   .cam-placeholder { color:var(--muted); font-size:14px; text-align:center; padding:20px; }
   .fps { position:absolute; top:8px; right:10px; font-size:11px; color:var(--accent); font-family:monospace; background:rgba(0,0,0,.5); padding:2px 6px; border-radius:6px; }
 
+  /* capture button + flash + thumbnail strip */
+  .capbtn { margin-left:auto; background:var(--panel-2); color:var(--text); border:1px solid #354259; border-radius:8px; padding:5px 10px; font-size:12px; font-weight:600; cursor:pointer; }
+  .capbtn:active { background:var(--accent-press); border-color:var(--accent); }
+  .capbtn:disabled { opacity:.4; cursor:not-allowed; }
+  .cam-flash { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; }
+  .cam-flash.go { animation:flash .35s ease-out; }
+  @keyframes flash { 0%{opacity:.8;} 100%{opacity:0;} }
+  .shots { display:flex; gap:8px; overflow-x:auto; padding-top:10px; -webkit-overflow-scrolling:touch; }
+  .shots:empty { display:none; }
+  .shot { position:relative; flex:none; width:104px; height:58px; border-radius:8px; overflow:hidden; border:1px solid #354259; cursor:pointer; background:#000; }
+  .shot img { width:100%; height:100%; object-fit:cover; }
+  .shot .t { position:absolute; left:0; right:0; bottom:0; font-size:9px; background:rgba(0,0,0,.6); color:#fff; text-align:center; padding:1px 0; }
+
+  /* image viewer modal */
+  .modal { position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.92); display:none; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:20px; }
+  .modal.show { display:flex; }
+  .modal img { max-width:100%; max-height:74vh; border-radius:10px; box-shadow:0 8px 40px rgba(0,0,0,.6); }
+  .modal-actions { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
+  .modal-actions a, .modal-actions button { padding:11px 20px; border-radius:10px; border:1px solid #354259; background:var(--panel); color:var(--text); font-size:14px; font-weight:600; cursor:pointer; text-decoration:none; }
+  .modal-actions .primary { background:var(--accent-press); border-color:var(--accent); color:#fff; }
+  .modal-actions .danger { background:#3a2330; border-color:#5a2a3a; color:var(--danger); }
+
   .ctrl-scroll { overflow-y:auto; display:flex; flex-direction:column; gap:18px; }
   .group { background:var(--panel-2); border-radius:12px; padding:12px; }
   .group-title { font-size:13px; color:var(--muted); margin-bottom:10px; }
@@ -126,12 +148,16 @@
 
   <main>
     <section class="panel">
-      <h2>📷 Camera <span class="badge" id="camBadge">camera: offline</span></h2>
+      <h2>📷 Camera <span class="badge" id="camBadge">camera: offline</span>
+        <button class="capbtn" id="captureBtn" disabled>📸 Capture</button>
+      </h2>
       <div class="cam-wrap">
         <div class="cam-placeholder" id="camPlaceholder">Waiting for ESP32-CAM…<br>(connect the relay, then power on the camera board)</div>
         <img id="cam" alt="" style="display:none" />
         <div class="fps" id="fps" style="display:none">0 fps</div>
+        <div class="cam-flash" id="camFlash"></div>
       </div>
+      <div class="shots" id="shots"></div>
     </section>
 
     <section class="panel">
@@ -169,6 +195,16 @@
     </section>
   </main>
 
+  <!-- captured image viewer -->
+  <div class="modal" id="shotModal">
+    <img id="shotModalImg" alt="captured frame" />
+    <div class="modal-actions">
+      <a class="primary" id="shotDownload" download>⬇ Download</a>
+      <button class="danger" id="shotDelete">🗑 Delete</button>
+      <button id="shotClose">Close</button>
+    </div>
+  </div>
+
 <script>
 /* ====== config: default to the domain this page is hosted on ====== */
 const proto = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -200,7 +236,7 @@ function connect() {
   ws.binaryType = 'blob';
 
   ws.onopen = () => { dot.classList.add('on'); logMsg('✓ '+RELAY+' room='+ROOM); };  // wait for relay to send role
-  ws.onclose = () => { dot.classList.remove('on'); statusText.textContent='Disconnected'; isDriver=false; applyDriveMode(); setBadge('robot',false); setBadge('camera',false); };
+  ws.onclose = () => { dot.classList.remove('on'); statusText.textContent='Disconnected'; isDriver=false; applyDriveMode(); setBadge('robot',false); setBadge('camera',false); $('captureBtn').disabled=true; };
   ws.onerror = () => { statusText.textContent='Relay connection failed'; };
 
   ws.onmessage = e => {
@@ -209,6 +245,7 @@ function connect() {
       const img = $('cam');
       img.onload = () => { if (lastImgUrl) URL.revokeObjectURL(lastImgUrl); lastImgUrl = url; };
       img.src = url; img.style.display='block'; $('camPlaceholder').style.display='none'; $('fps').style.display='block';
+      $('captureBtn').disabled = false;
       frames++;
     } else {                                       // text message (telemetry / status)
       try {
@@ -289,6 +326,7 @@ function selectCar(n) {
   document.querySelectorAll('.car .cdot').forEach(d => d.classList.remove('on'));
   setBadge('robot',false); setBadge('camera',false);
   const img=$('cam'); img.style.display='none'; $('camPlaceholder').style.display='block'; $('fps').style.display='none';
+  $('captureBtn').disabled=true;
   lightOn=false; $('lightBtn').classList.remove('active');
   isDriver=false; applyDriveMode(); updateCarBar();   // lock controls until relay confirms role
 
@@ -296,6 +334,45 @@ function selectCar(n) {
 }
 
 function toggleLight(){ lightOn=!lightOn; $('lightBtn').classList.toggle('active',lightOn); send('light', lightOn?'on':'off'); }
+
+/* ====== capture current frame ====== */
+function capture() {
+  const img = $('cam');
+  if (img.style.display === 'none' || !img.complete || !img.naturalWidth) return;  // no frame yet
+  const cv = document.createElement('canvas');
+  cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+  cv.getContext('2d').drawImage(img, 0, 0);
+  const data = cv.toDataURL('image/jpeg', 0.92);   // blob frame is same-origin -> no CORS taint
+
+  // flash feedback
+  const fl = $('camFlash'); fl.classList.remove('go'); void fl.offsetWidth; fl.classList.add('go');
+
+  // build filename: car1_2026-06-27_14-30-05.jpg
+  const d = new Date();
+  const pad = x => String(x).padStart(2,'0');
+  const ts = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
+  const name = `car${curCar}_${ts}.jpg`;
+
+  // add thumbnail
+  const shot = document.createElement('div');
+  shot.className = 'shot';
+  shot.innerHTML = `<img src="${data}" alt=""><span class="t">${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}</span>`;
+  shot.onclick = () => openShot(data, name, shot);
+  $('shots').prepend(shot);
+}
+
+/* ====== captured-image viewer ====== */
+function openShot(data, name, shotEl) {
+  $('shotModalImg').src = data;
+  const dl = $('shotDownload'); dl.href = data; dl.download = name;
+  $('shotDelete').onclick = () => { shotEl.remove(); closeShot(); };
+  $('shotModal').classList.add('show');
+}
+function closeShot(){ $('shotModal').classList.remove('show'); }
+$('captureBtn').addEventListener('click', capture);
+$('shotClose').addEventListener('click', closeShot);
+$('shotModal').addEventListener('click', e => { if (e.target === $('shotModal')) closeShot(); });
+document.addEventListener('keydown', e => { if (e.key==='Escape') closeShot(); });
 
 /* ====== button bindings ====== */
 document.querySelectorAll('[data-cmd]').forEach(b => b.addEventListener('click', () => send(b.dataset.cmd)));
