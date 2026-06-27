@@ -1,0 +1,12 @@
+{
+  "name": "esp32-relay",
+  "version": "1.0.0",
+  "description": "WebSocket relay + static host for ESP32 robot control",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
