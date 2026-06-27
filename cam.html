@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32-CAM Capture Viewer</title>
+    <!-- โหลด Tailwind CSS จาก CDN เพื่อความสวยงาม -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* ซ่อน Scrollbar สำหรับแกลลอรี่แต่ยังเลื่อนได้ */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen text-gray-800 font-sans p-4 sm:p-8">
+
+    <div class="max-w-6xl mx-auto">
+        <!-- ส่วนหัว -->
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl font-bold text-slate-800 flex items-center justify-center gap-3">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                ESP32-CAM Live & Capture
+            </h1>
+            <p class="text-slate-500 mt-2">ดึงภาพสดจาก http://172.20.10.2/ และบันทึกภาพลงบนหน้าเว็บ</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <!-- คอลัมน์ซ้าย: กล้องสดและปุ่ม -->
+            <div class="lg:col-span-7 flex flex-col gap-4">
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-200">
+                    <div class="flex justify-between items-center mb-3">
+                        <h2 class="text-lg font-semibold text-gray-700 flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full bg-red-500 animate-pulse"></span>
+                            Live Stream
+                        </h2>
+                        <!-- ปุ่มเปิดเต็มจอ -->
+                        <button id="fullscreen-trigger-btn" class="text-gray-500 hover:text-blue-600 flex items-center gap-1 text-sm bg-gray-100 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                            </svg>
+                            ขยายเต็มจอ
+                        </button>
+                    </div>
+                    
+                    <!-- กรอบแสดงวิดีโอ -->
+                    <div class="bg-black rounded-xl overflow-hidden relative flex justify-center items-center aspect-video w-full shadow-inner group">
+                        <img id="camera-stream" 
+                             src="http://172.20.10.2:81/stream" 
+                             alt="กำลังรอสัญญาณจากกล้อง... (กรุณาตรวจสอบการเชื่อมต่อและ IP)" 
+                             class="max-w-full max-h-full object-contain"
+                             crossorigin="anonymous">
+                    </div>
+
+                    <!-- ปุ่ม Capture -->
+                    <div class="mt-4">
+                        <button id="capture-btn" class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold py-4 px-6 rounded-xl shadow-md transition-all duration-200 flex items-center justify-center gap-2 text-xl hover:-translate-y-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                            ถ่ายภาพ (Capture)
+                        </button>
+                    </div>
+
+                    <!-- แจ้งเตือนกรณีติดปัญหา -->
+                    <div id="error-message" class="hidden mt-4 bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg">
+                        <div class="flex">
+                            <div class="flex-shrink-0">
+                                <svg class="h-5 w-5 text-red-500" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                                </svg>
+                            </div>
+                            <div class="ml-3">
+                                <p class="text-sm text-red-700">
+                                    <strong>ไม่สามารถแคปภาพได้!</strong> เบราว์เซอร์บล็อกการเข้าถึงภาพ (CORS Policy) แนะนำให้เปิดไฟล์นี้แบบ Local (เช่นเปิดไฟล์ .html ตรงๆ ไม่ผ่าน HTTPS) หรือตั้งค่าให้กล้องอนุญาตการเข้าถึงข้ามโดเมน
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- คอลัมน์ขวา: แกลลอรี่ภาพที่ถูกถ่าย -->
+            <div class="lg:col-span-5 flex flex-col h-full">
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 h-full flex flex-col max-h-[80vh]">
+                    <div class="flex justify-between items-center mb-4 pb-2 border-b border-gray-100">
+                        <h2 class="text-lg font-semibold text-gray-700 flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            ภาพที่ถูกบันทึก
+                        </h2>
+                        <span id="capture-count" class="bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-sm font-medium">
+                            0 ภาพ
+                        </span>
+                    </div>
+
+                    <!-- พื้นที่แสดงรูปภาพทั้งหมด -->
+                    <div id="gallery" class="flex-1 overflow-y-auto no-scrollbar grid grid-cols-2 gap-3 content-start">
+                        <!-- สถานะเมื่อยังไม่มีรูป -->
+                        <div id="empty-state" class="col-span-2 flex flex-col items-center justify-center h-48 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl m-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                            </svg>
+                            <p class="text-sm">กดปุ่ม Capture ด้านซ้าย<br>เพื่อบันทึกภาพมาแสดงที่นี่</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ส่วนของ Popup (Modal) สำหรับดูรูปภาพขยาย -->
+    <div id="image-modal" class="fixed inset-0 z-50 hidden bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 opacity-0 transition-opacity duration-300">
+        <!-- ปุ่มปิด Popup -->
+        <button id="close-modal-btn" class="absolute top-4 right-4 md:top-8 md:right-8 text-white hover:text-red-400 bg-gray-800/50 hover:bg-gray-800 p-2 rounded-full transition-colors z-10">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+        </button>
+        
+        <!-- รูปภาพที่จะขยาย -->
+        <img id="modal-image" src="" alt="Full size image" class="max-w-full max-h-full object-contain rounded-lg shadow-2xl scale-95 transition-transform duration-300">
+    </div>
+
+    <!-- ส่วนของ Fullscreen Live Stream Modal -->
+    <div id="fullscreen-stream-modal" class="fixed inset-0 z-40 hidden bg-black flex flex-col items-center justify-center p-4 opacity-0 transition-opacity duration-300">
+        
+        <!-- แถบด้านบนของโหมดเต็มจอ -->
+        <div class="absolute top-4 left-4 right-4 flex justify-between items-center z-10">
+            <!-- สัญลักษณ์ LIVE -->
+            <div class="flex items-center gap-2 bg-red-600/80 backdrop-blur-md text-white px-3 py-1.5 rounded-full text-sm font-semibold tracking-wider">
+                <span class="w-2.5 h-2.5 rounded-full bg-white animate-pulse"></span>
+                LIVE STREAMING (FULLSCREEN)
+            </div>
+            
+            <!-- ปุ่มปิดเต็มจอ -->
+            <button id="fullscreen-close-btn" class="text-white hover:text-red-400 bg-gray-900/80 hover:bg-gray-800 p-2.5 rounded-full transition-colors backdrop-blur-md">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+
+        <!-- หน้าจอแสดงสตรีมเต็มจอ (แก้ไข: เพิ่ม crossorigin="anonymous" เพื่อแก้ปัญหา CORS ตอนกด Capture ในโหมดเต็มจอ) -->
+        <img id="fullscreen-camera-stream" src="" alt="กำลังโหลดภาพสดแบบเต็มจอ..." class="max-w-full max-h-full object-contain rounded-lg shadow-2xl" crossorigin="anonymous">
+
+        <!-- ปุ่มควบคุมด้านล่าง (Capture) -->
+        <div class="absolute bottom-6 z-10 w-full max-w-xs px-4">
+            <button id="fullscreen-capture-btn" class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold py-3.5 px-6 rounded-2xl shadow-xl transition-all duration-200 flex items-center justify-center gap-2 text-lg border border-blue-400/30">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                บันทึกภาพหน้าจอนี้
+            </button>
+        </div>
+
+        <!-- แจ้งเตือนเมื่อกดถ่ายภาพสำเร็จบนหน้าจอเต็มจอ -->
+        <div id="fullscreen-toast" class="absolute bottom-24 bg-green-500/90 text-white px-4 py-2 rounded-xl font-medium shadow-lg pointer-events-none transform translate-y-4 opacity-0 transition-all duration-300 flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+            บันทึกภาพสำเร็จ!
+        </div>
+    </div>
+
+    <!-- JavaScript สำหรับจัดการการถ่ายภาพและ Popup -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const streamImg = document.getElementById('camera-stream');
+            const captureBtn = document.getElementById('capture-btn');
+            const gallery = document.getElementById('gallery');
+            const emptyState = document.getElementById('empty-state');
+            const captureCountLabel = document.getElementById('capture-count');
+            const errorMessage = document.getElementById('error-message');
+            
+            // ตัวแปรสำหรับ Popup รูปภาพขยาย
+            const imageModal = document.getElementById('image-modal');
+            const modalImage = document.getElementById('modal-image');
+            const closeModalBtn = document.getElementById('close-modal-btn');
+
+            // ตัวแปรสำหรับ Fullscreen Stream Modal
+            const fullscreenTriggerBtn = document.getElementById('fullscreen-trigger-btn');
+            const fullscreenStreamModal = document.getElementById('fullscreen-stream-modal');
+            const fullscreenCameraStream = document.getElementById('fullscreen-camera-stream');
+            const fullscreenCloseBtn = document.getElementById('fullscreen-close-btn');
+            const fullscreenCaptureBtn = document.getElementById('fullscreen-capture-btn');
+            const fullscreenToast = document.getElementById('fullscreen-toast');
+            
+            // เก็บ URL ของสตรีมเพื่อสลับใช้งาน
+            const STREAM_URL = streamImg.getAttribute('src');
+            
+            let captureCount = 0;
+
+            // ==================== ฟังก์ชันควบคุมภาพสตรีมเต็มจอ ====================
+            function openFullscreenStream() {
+                // 1. หยุดดึงสตรีมจากกล้องตัวหลักชั่วคราว เพื่อคืนทราฟฟิก (บอร์ดจะได้ไม่ค้าง)
+                streamImg.src = ""; 
+
+                // 2. แสดงสตรีมเต็มจอและเริ่มเชื่อมต่อสตรีมใหม่
+                fullscreenCameraStream.src = STREAM_URL;
+                fullscreenStreamModal.classList.remove('hidden');
+                
+                // เอฟเฟกต์ Fade in ค่อยๆ แสดง
+                setTimeout(() => {
+                    fullscreenStreamModal.classList.remove('opacity-0');
+                }, 10);
+            }
+
+            function closeFullscreenStream() {
+                // 1. ปิดเอฟเฟกต์เต็มจอ
+                fullscreenStreamModal.classList.add('opacity-0');
+                
+                // 2. รอแอนิเมชันจบแล้วทำการสลับสตรีมกลับมาสแตนบายที่เว็บหน้าแรก
+                setTimeout(() => {
+                    fullscreenStreamModal.classList.add('hidden');
+                    fullscreenCameraStream.src = ""; // เคลียร์เพื่อไม่ให้สตรีมทำงานค้าง
+                    streamImg.src = STREAM_URL; // ดึงภาพกลับคืนมาที่หน้าหลัก
+                }, 300);
+            }
+
+            // จัดการเปิด-ปิด สตรีมเต็มจอ
+            fullscreenTriggerBtn.addEventListener('click', openFullscreenStream);
+            fullscreenCloseBtn.addEventListener('click', closeFullscreenStream);
+
+            // ==================== ฟังก์ชันควบคุมรูปภาพ Popup (Modal) ====================
+            function openModal(imageSrc) {
+                modalImage.src = imageSrc;
+                imageModal.classList.remove('hidden');
+                setTimeout(() => {
+                    imageModal.classList.remove('opacity-0');
+                    modalImage.classList.replace('scale-95', 'scale-100');
+                }, 10);
+            }
+
+            function closeModal() {
+                imageModal.classList.add('opacity-0');
+                modalImage.classList.replace('scale-100', 'scale-95');
+                setTimeout(() => {
+                    imageModal.classList.add('hidden');
+                    modalImage.src = '';
+                }, 300);
+            }
+
+            closeModalBtn.addEventListener('click', closeModal);
+            
+            // ปิดภาพขยายเมื่อคลิกที่ว่าง
+            imageModal.addEventListener('click', (e) => {
+                if (e.target === imageModal) closeModal();
+            });
+            
+            // กดปุ่ม Esc เพื่อปิดโหมดต่างๆ
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    if (!imageModal.classList.contains('hidden')) {
+                        closeModal();
+                    } else if (!fullscreenStreamModal.classList.contains('hidden')) {
+                        closeFullscreenStream();
+                    }
+                }
+            });
+
+            // ==================== ฟังก์ชันบันทึกภาพ (Capture) ====================
+            function captureImage(sourceImgElement) {
+                // ตรวจสอบความพร้อมของภาพ
+                if (!sourceImgElement.complete || sourceImgElement.naturalWidth === 0) {
+                    alert('กรุณารอให้ภาพจากกล้องโหลดเสร็จสมบูรณ์ หรือตรวจสอบสถานะอุปกรณ์กล้อง');
+                    return null;
+                }
+
+                try {
+                    errorMessage.classList.add('hidden');
+
+                    // 1. สร้าง Canvas และดึงขนาดจริงของกล้องมาวาด
+                    const canvas = document.createElement('canvas');
+                    canvas.width = sourceImgElement.naturalWidth;
+                    canvas.height = sourceImgElement.naturalHeight;
+                    const context = canvas.getContext('2d');
+                    
+                    // 2. วาดเฟรมภาพปัจจุบันลงไปบน Canvas
+                    context.drawImage(sourceImgElement, 0, 0, canvas.width, canvas.height);
+                    
+                    // 3. แปลงเป็น Data URL เพื่อแสดงภาพนิ่ง
+                    const dataURL = canvas.toDataURL('image/jpeg', 0.9);
+                    
+                    // 4. แสดงผลลงบนแกลลอรี่หลังบันทึกภาพ
+                    if (emptyState && emptyState.style.display !== 'none') {
+                        emptyState.style.display = 'none';
+                    }
+                    
+                    const imgContainer = document.createElement('div');
+                    imgContainer.className = 'relative group rounded-xl overflow-hidden border border-gray-200 shadow-sm aspect-video bg-black';
+                    
+                    const newImg = document.createElement('img');
+                    newImg.src = dataURL;
+                    newImg.className = 'w-full h-full object-cover transition duration-300 group-hover:scale-105 cursor-pointer';
+                    newImg.alt = 'Captured Image';
+                    newImg.title = 'คลิกเพื่อดูรูปขยาย';
+                    newImg.addEventListener('click', () => {
+                        openModal(dataURL);
+                    });
+                    
+                    const timeLabel = document.createElement('div');
+                    timeLabel.className = 'absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent p-2 pt-4 pointer-events-none';
+                    
+                    const now = new Date();
+                    const timeString = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second:'2-digit' });
+                    timeLabel.innerHTML = `<span class="text-white text-xs font-medium">${timeString}</span>`;
+
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.innerHTML = `
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    `;
+                    deleteBtn.className = 'absolute top-2 right-2 bg-red-500/80 hover:bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm z-10';
+                    deleteBtn.title = "ลบรูปนี้";
+                    deleteBtn.onclick = function(e) {
+                        e.stopPropagation();
+                        imgContainer.remove();
+                        captureCount--;
+                        updateCount();
+                        if(captureCount === 0) {
+                            emptyState.style.display = 'flex';
+                        }
+                    };
+                    
+                    imgContainer.appendChild(newImg);
+                    imgContainer.appendChild(timeLabel);
+                    imgContainer.appendChild(deleteBtn);
+                    gallery.insertBefore(imgContainer, gallery.firstChild);
+                    
+                    captureCount++;
+                    updateCount();
+                    return dataURL;
+
+                } catch (error) {
+                    console.error('เกิดข้อผิดพลาดในการ Capture:', error);
+                    errorMessage.classList.remove('hidden');
+                    return null;
+                }
+            }
+
+            // เมื่อกดปุ่ม Capture ที่สตรีมหลัก (Normal Screen)
+            captureBtn.addEventListener('click', () => {
+                const captured = captureImage(streamImg);
+                if (captured) {
+                    // เอฟเฟกต์ปุ่มสีเขียวกระพริบตอบสนอง
+                    captureBtn.classList.replace('bg-blue-600', 'bg-green-500');
+                    captureBtn.classList.replace('hover:bg-blue-700', 'hover:bg-green-600');
+                    setTimeout(() => {
+                        captureBtn.classList.replace('bg-green-500', 'bg-blue-600');
+                        captureBtn.classList.replace('hover:bg-green-600', 'hover:bg-blue-700');
+                    }, 500);
+                }
+            });
+
+            // เมื่อกดปุ่ม Capture ที่สตรีมเต็มจอ (Fullscreen Mode)
+            fullscreenCaptureBtn.addEventListener('click', () => {
+                const captured = captureImage(fullscreenCameraStream);
+                if (captured) {
+                    // แสดง Toast แจ้งเตือนว่าบันทึกภาพสำเร็จบนจอใหญ่
+                    fullscreenToast.classList.remove('opacity-0', 'translate-y-4');
+                    fullscreenToast.classList.add('opacity-100', 'translate-y-0');
+                    
+                    setTimeout(() => {
+                        fullscreenToast.classList.remove('opacity-100', 'translate-y-0');
+                        fullscreenToast.classList.add('opacity-0', 'translate-y-4');
+                    }, 1800);
+                }
+            });
+
+            function updateCount() {
+                captureCountLabel.innerText = `${captureCount} ภาพ`;
+            }
+        });
+    </script>
+</body>
+</html>

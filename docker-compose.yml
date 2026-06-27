@@ -1,0 +1,14 @@
+services:
+  relay:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      # ตั้งรหัสลับกันคนอื่นแอบคุมหุ่น (ต้องใส่ให้ตรงกับฝั่ง ESP32 และหน้าเว็บ)
+      AUTH_TOKEN: ${AUTH_TOKEN:-}
+      PORT: 8080
+    expose:
+      - "8080"
+    # Dokploy จะ map โดเมน -> service นี้ที่พอร์ต 8080 ผ่านหน้า UI (Domains)
+    # ไม่ต้อง publish host port เอง ปล่อยให้ Traefik ของ Dokploy จัดการ HTTPS/wss
