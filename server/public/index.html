@@ -55,12 +55,15 @@
   .badge.on { background:#15302b; color:var(--accent); }
 
   .cam-wrap { flex:1; background:#000; border-radius:10px; display:flex; align-items:center; justify-content:center; overflow:hidden; position:relative; min-height:200px; }
-  .cam-wrap img { width:100%; height:100%; object-fit:contain; }
+  .cam-wrap img, .cam-wrap video { width:100%; height:100%; object-fit:contain; }
   .cam-placeholder { color:var(--muted); font-size:14px; text-align:center; padding:20px; }
   .fps { position:absolute; top:8px; right:10px; font-size:11px; color:var(--accent); font-family:monospace; background:rgba(0,0,0,.5); padding:2px 6px; border-radius:6px; }
 
   /* capture button + flash + thumbnail strip */
+  .camera-actions { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; }
   .capbtn { margin-left:auto; background:var(--panel-2); color:var(--text); border:1px solid #354259; border-radius:8px; padding:5px 10px; font-size:12px; font-weight:600; cursor:pointer; }
+  .camera-actions .capbtn { margin-left:0; }
+  .capbtn.active { background:var(--accent-press); border-color:var(--accent); color:#fff; }
   .capbtn:active { background:var(--accent-press); border-color:var(--accent); }
   .capbtn:disabled { opacity:.4; cursor:not-allowed; }
   .cam-flash { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; }
@@ -74,26 +77,40 @@
   .camera-panel { overflow-y:auto; }
 
   /* Krit AI */
-  .krit-ai { margin-top:12px; background:var(--panel-2); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:10px; flex:none; }
-  .krit-top { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
-  .krit-title { font-size:14px; font-weight:700; display:flex; align-items:center; gap:8px; }
-  .krit-state { font-size:11px; color:var(--muted); background:#0b0f16; border:1px solid #354259; border-radius:999px; padding:2px 8px; font-weight:600; }
+  .krit-ai { margin-top:12px; background:#101722; border:1px solid #2b3648; border-radius:12px; display:flex; flex-direction:column; flex:none; min-height:310px; overflow:hidden; box-shadow:0 12px 28px rgba(0,0,0,.18); }
+  .krit-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px; border-bottom:1px solid #263246; background:#151f2d; }
+  .krit-brand { display:flex; align-items:center; gap:10px; min-width:0; }
+  .krit-logo { width:36px; height:36px; border-radius:10px; object-fit:cover; flex:none; box-shadow:0 0 16px rgba(45,212,191,.25); }
+  .krit-name { font-size:14px; font-weight:800; line-height:1.1; }
+  .krit-subtitle { font-size:11px; color:var(--muted); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .krit-state { font-size:11px; color:var(--muted); background:#0b0f16; border:1px solid #354259; border-radius:999px; padding:4px 9px; font-weight:700; white-space:nowrap; }
   .krit-state.busy { color:#fbbf24; border-color:#6b4d16; }
   .krit-state.ok { color:var(--accent); border-color:#25685e; }
   .krit-state.error { color:var(--danger); border-color:#5a2a3a; }
-  .krit-actions { display:flex; gap:8px; flex-wrap:wrap; }
-  .krit-btn, .krit-file { background:var(--panel); color:var(--text); border:1px solid #354259; border-radius:8px; padding:8px 10px; font-size:12px; font-weight:700; cursor:pointer; }
-  .krit-btn.primary { background:var(--accent-press); border-color:var(--accent); color:#fff; }
-  .krit-btn:disabled { opacity:.45; cursor:not-allowed; }
-  .krit-file input { display:none; }
-  .krit-preview { min-height:58px; display:flex; align-items:center; gap:10px; color:var(--muted); font-size:12px; background:#0b0f16; border:1px solid #354259; border-radius:8px; padding:6px; }
-  .krit-preview img { width:72px; height:48px; object-fit:cover; border-radius:6px; background:#000; flex:none; }
-  .krit-chat { min-height:76px; max-height:142px; overflow-y:auto; background:#0b0f16; border-radius:8px; padding:8px; display:flex; flex-direction:column; gap:6px; -webkit-user-select:text; user-select:text; }
-  .krit-msg { font-size:12px; line-height:1.35; color:var(--text); overflow-wrap:anywhere; }
-  .krit-msg.ai { color:var(--accent); }
-  .krit-msg.user { color:#cbd5e1; }
-  .krit-input-row { display:flex; gap:8px; }
-  .krit-input { flex:1; min-width:0; background:#0b0f16; color:var(--text); border:1px solid #354259; border-radius:8px; padding:9px 10px; font-size:13px; }
+  .krit-thread { min-height:132px; max-height:236px; overflow-y:auto; padding:14px 12px; background:#0b0f16; display:flex; flex-direction:column; gap:12px; -webkit-user-select:text; user-select:text; }
+  .krit-row { display:flex; gap:8px; align-items:flex-start; }
+  .krit-row.user { justify-content:flex-end; }
+  .krit-row.user .krit-avatar { order:2; }
+  .krit-avatar { width:28px; height:28px; border-radius:8px; object-fit:cover; flex:none; background:#1a2230; border:1px solid #354259; }
+  .krit-user-avatar { display:grid; place-items:center; color:#e6edf3; font-size:11px; font-weight:800; }
+  .krit-bubble { max-width:min(82%,420px); border:1px solid #28364b; border-radius:14px; padding:9px 11px; background:#151f2d; color:var(--text); font-size:13px; line-height:1.4; overflow-wrap:anywhere; }
+  .krit-row.user .krit-bubble { background:#123b36; border-color:#1d6f64; color:#ecfeff; border-bottom-right-radius:5px; }
+  .krit-row.ai .krit-bubble { border-bottom-left-radius:5px; }
+  .krit-bubble .krit-answer { color:var(--accent); font-weight:800; }
+  .krit-bubble img { display:block; width:132px; max-width:100%; max-height:94px; object-fit:cover; border-radius:8px; margin-bottom:8px; border:1px solid rgba(255,255,255,.12); }
+  .krit-attach-tray { display:flex; align-items:center; gap:8px; padding:9px 12px; border-top:1px solid #263246; background:#111a26; }
+  .krit-attach-preview { display:flex; align-items:center; gap:9px; min-width:0; flex:1; color:var(--muted); font-size:12px; }
+  .krit-attach-preview img { width:58px; height:42px; object-fit:cover; border-radius:8px; background:#000; border:1px solid #354259; flex:none; }
+  .krit-image-name { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .krit-composer { display:flex; align-items:center; gap:8px; padding:10px 12px 12px; background:#151f2d; border-top:1px solid #263246; }
+  .krit-icon-btn, .krit-send, .krit-chip { border:1px solid #354259; background:#0f1722; color:var(--text); border-radius:10px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:7px; font-size:12px; font-weight:800; }
+  .krit-icon-btn { width:40px; height:40px; flex:none; }
+  .krit-icon-btn input { display:none; }
+  .krit-icon-btn img, .krit-send img, .krit-chip img { width:18px; height:18px; }
+  .krit-chip { padding:8px 10px; white-space:nowrap; }
+  .krit-chip:disabled, .krit-send:disabled { opacity:.45; cursor:not-allowed; }
+  .krit-input { flex:1; min-width:0; height:40px; background:#0b0f16; color:var(--text); border:1px solid #354259; border-radius:10px; padding:0 12px; font-size:13px; }
+  .krit-send { height:40px; padding:0 12px; background:var(--accent-press); border-color:var(--accent); color:#fff; }
 
   /* image viewer modal */
   .modal { position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.92); display:none; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:20px; }
@@ -155,9 +172,12 @@
     .dpad { max-width:none; }            /* full-width D-pad for easier touch */
     button.btn { padding:18px; }
     .axis-row .label { width:56px; font-size:13px; }
-    .krit-input-row { flex-direction:column; }
-    .krit-actions { width:100%; }
-    .krit-actions .krit-btn, .krit-actions .krit-file { flex:1; text-align:center; }
+    .krit-header { align-items:flex-start; }
+    .krit-thread { max-height:260px; }
+    .krit-composer { flex-wrap:wrap; }
+    .krit-input { order:1; flex-basis:100%; }
+    .krit-send { flex:1; }
+    .krit-chip { flex:1; }
   }
 </style>
 </head>
@@ -180,33 +200,55 @@
   <main>
     <section class="panel camera-panel">
       <h2>📷 Camera <span class="badge" id="camBadge">camera: offline</span>
-        <button class="capbtn" id="captureBtn" disabled>📸 Capture</button>
+        <span class="camera-actions">
+          <button class="capbtn" id="pcCamBtn" type="button">PC Camera</button>
+          <button class="capbtn" id="captureBtn" disabled>📸 Capture</button>
+        </span>
       </h2>
       <div class="cam-wrap">
         <div class="cam-placeholder" id="camPlaceholder">Waiting for ESP32-CAM…<br>(connect the relay, then power on the camera board)</div>
         <img id="cam" alt="" style="display:none" />
+        <video id="pcCam" autoplay playsinline muted style="display:none"></video>
         <div class="fps" id="fps" style="display:none">0 fps</div>
         <div class="cam-flash" id="camFlash"></div>
       </div>
       <div class="shots" id="shots"></div>
       <div class="krit-ai" id="kritAi">
-        <div class="krit-top">
-          <div class="krit-title">Krit AI <span class="krit-state" id="kritState">Ready</span></div>
-          <div class="krit-actions">
-            <button class="krit-btn" id="kritUseCapture" type="button">Use Last Capture</button>
-            <label class="krit-file">Upload<input id="kritFile" type="file" accept="image/*" /></label>
+        <div class="krit-header">
+          <div class="krit-brand">
+            <img class="krit-logo" src="assets/krit-ai/krit-logo.png" alt="" />
+            <div>
+              <div class="krit-name">Krit AI</div>
+              <div class="krit-subtitle">Rune scanner assistant</div>
+            </div>
+          </div>
+          <span class="krit-state" id="kritState">Ready</span>
+        </div>
+        <div class="krit-thread" id="kritChat">
+          <div class="krit-row ai">
+            <img class="krit-avatar" src="assets/krit-ai/krit-logo.png" alt="" />
+            <div class="krit-bubble">Ready to read a rune. Capture or upload an image, then ask me what it means.</div>
           </div>
         </div>
-        <div class="krit-preview">
-          <img id="kritPreviewImg" alt="" style="display:none" />
-          <span id="kritImageName">No image selected</span>
+        <div class="krit-attach-tray">
+          <div class="krit-attach-preview">
+            <img id="kritPreviewImg" alt="" style="display:none" />
+            <span class="krit-image-name" id="kritImageName">No image selected</span>
+          </div>
+          <button class="krit-chip" id="kritUseCapture" type="button">
+            <img src="assets/krit-ai/camera.svg" alt="" /> Use last capture
+          </button>
         </div>
-        <div class="krit-chat" id="kritChat">
-          <div class="krit-msg ai">Krit AI ready.</div>
-        </div>
-        <div class="krit-input-row">
+        <div class="krit-composer">
+          <label class="krit-icon-btn" title="Upload image">
+            <img src="assets/krit-ai/image.svg" alt="" />
+            <input id="kritFile" type="file" accept="image/*" />
+          </label>
           <input class="krit-input" id="kritQuestion" placeholder="Ask Krit AI..." />
-          <button class="krit-btn primary" id="kritSend" type="button">Send</button>
+          <button class="krit-send" id="kritSend" type="button">
+            <img src="assets/krit-ai/send.svg" alt="" />
+            <span>Send</span>
+          </button>
         </div>
       </div>
     </section>
@@ -279,8 +321,77 @@ const dot = $('dot'), statusText = $('statusText');
 function logMsg(t){ const el=$('log'); el.innerHTML=`<div>${new Date().toLocaleTimeString()} ${t}</div>`+el.innerHTML; }
 
 /* ====== camera: fps counter ====== */
-let frames = 0, lastImgUrl = null;
+let frames = 0, lastImgUrl = null, hasEspFrame = false;
+let pcCamStream = null, pcCamActive = false;
 setInterval(() => { if ($('fps').style.display!=='none'){ $('fps').textContent = frames+' fps'; frames=0; } }, 1000);
+
+function updateCaptureButton() {
+  const video = $('pcCam');
+  const canCapturePc = pcCamActive && video.videoWidth > 0;
+  $('captureBtn').disabled = !(canCapturePc || (!pcCamActive && hasEspFrame));
+}
+
+function showEspCameraView() {
+  $('pcCam').style.display = 'none';
+  const img = $('cam');
+  img.style.display = hasEspFrame ? 'block' : 'none';
+  $('camPlaceholder').style.display = hasEspFrame ? 'none' : 'block';
+  $('fps').style.display = hasEspFrame ? 'block' : 'none';
+  updateCaptureButton();
+}
+
+function showPcCameraView() {
+  $('cam').style.display = 'none';
+  $('pcCam').style.display = 'block';
+  $('camPlaceholder').style.display = 'none';
+  $('fps').style.display = 'none';
+  updateCaptureButton();
+}
+
+async function startPcCamera() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    logMsg('PC camera is not available in this browser');
+    return;
+  }
+  $('pcCamBtn').disabled = true;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } },
+      audio: false
+    });
+    pcCamStream = stream;
+    pcCamActive = true;
+    const video = $('pcCam');
+    video.srcObject = stream;
+    video.onloadedmetadata = () => { video.play(); updateCaptureButton(); };
+    $('pcCamBtn').classList.add('active');
+    $('pcCamBtn').textContent = 'Stop PC Camera';
+    showPcCameraView();
+    logMsg('PC camera started');
+  } catch (err) {
+    logMsg('PC camera failed: ' + (err.message || err));
+  } finally {
+    $('pcCamBtn').disabled = false;
+  }
+}
+
+function stopPcCamera() {
+  if (pcCamStream) pcCamStream.getTracks().forEach(t => t.stop());
+  pcCamStream = null;
+  pcCamActive = false;
+  const video = $('pcCam');
+  video.pause();
+  video.srcObject = null;
+  $('pcCamBtn').classList.remove('active');
+  $('pcCamBtn').textContent = 'PC Camera';
+  showEspCameraView();
+  logMsg('PC camera stopped');
+}
+
+function togglePcCamera() {
+  if (pcCamActive) stopPcCamera();
+  else startPcCamera();
+}
 
 /* ====== WebSocket to relay (as controller) ====== */
 function connect() {
@@ -290,7 +401,7 @@ function connect() {
   ws.binaryType = 'blob';
 
   ws.onopen = () => { dot.classList.add('on'); logMsg('✓ '+RELAY+' room='+ROOM); };  // wait for relay to send role
-  ws.onclose = () => { dot.classList.remove('on'); statusText.textContent='Disconnected'; isDriver=false; applyDriveMode(); setBadge('robot',false); setBadge('camera',false); $('captureBtn').disabled=true; };
+  ws.onclose = () => { dot.classList.remove('on'); statusText.textContent='Disconnected'; isDriver=false; applyDriveMode(); setBadge('robot',false); setBadge('camera',false); hasEspFrame=false; pcCamActive ? showPcCameraView() : showEspCameraView(); };
   ws.onerror = () => { statusText.textContent='Relay connection failed'; };
 
   ws.onmessage = e => {
@@ -298,8 +409,9 @@ function connect() {
       const url = URL.createObjectURL(e.data);
       const img = $('cam');
       img.onload = () => { if (lastImgUrl) URL.revokeObjectURL(lastImgUrl); lastImgUrl = url; };
-      img.src = url; img.style.display='block'; $('camPlaceholder').style.display='none'; $('fps').style.display='block';
-      $('captureBtn').disabled = false;
+      img.src = url; hasEspFrame = true;
+      if (!pcCamActive) { img.style.display='block'; $('camPlaceholder').style.display='none'; $('fps').style.display='block'; }
+      updateCaptureButton();
       frames++;
     } else {                                       // text message (telemetry / status)
       try {
@@ -379,8 +491,9 @@ function selectCar(n) {
   document.querySelectorAll('.car').forEach(el => el.classList.toggle('active', +el.dataset.car===n));
   document.querySelectorAll('.car .cdot').forEach(d => d.classList.remove('on'));
   setBadge('robot',false); setBadge('camera',false);
-  const img=$('cam'); img.style.display='none'; $('camPlaceholder').style.display='block'; $('fps').style.display='none';
-  $('captureBtn').disabled=true;
+  hasEspFrame = false;
+  const img=$('cam'); img.style.display='none';
+  pcCamActive ? showPcCameraView() : showEspCameraView();
   renderShots();                             // แสดงเฉพาะรูปของคันที่เพิ่งเลือก
   refreshKritFromLatest();
   lightOn=false; $('lightBtn').classList.remove('active');
@@ -396,10 +509,17 @@ const shotStore = {};   // { [carNumber]: [ {data, name, time}, ... ] }
 
 function capture() {
   const img = $('cam');
-  if (img.style.display === 'none' || !img.complete || !img.naturalWidth) return;  // no frame yet
+  const video = $('pcCam');
   const cv = document.createElement('canvas');
-  cv.width = img.naturalWidth; cv.height = img.naturalHeight;
-  cv.getContext('2d').drawImage(img, 0, 0);
+  if (pcCamActive) {
+    if (!video.videoWidth || !video.videoHeight) return;
+    cv.width = video.videoWidth; cv.height = video.videoHeight;
+    cv.getContext('2d').drawImage(video, 0, 0);
+  } else {
+    if (img.style.display === 'none' || !img.complete || !img.naturalWidth) return;  // no frame yet
+    cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+    cv.getContext('2d').drawImage(img, 0, 0);
+  }
   const data = cv.toDataURL('image/jpeg', 0.92);   // blob frame is same-origin -> no CORS taint
 
   // flash feedback
@@ -410,7 +530,7 @@ function capture() {
   const ts = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
   const time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 
-  const shot = { data, name: `car${curCar}_${ts}.jpg`, time };
+  const shot = { data, name: `${pcCamActive ? 'pc' : 'car' + curCar}_${ts}.jpg`, time };
   (shotStore[curCar] ||= []).unshift(shot);  // เก็บเข้าคลังของคันนี้
   setKritImage(shot.data, shot.name);
   renderShots();
@@ -454,14 +574,34 @@ function setKritStatus(text, mode='ready') {
   el.className = 'krit-state' + (mode && mode !== 'ready' ? ' ' + mode : '');
 }
 
-function addKritMessage(kind, text) {
+function addKritMessage(kind, text, imageData='') {
   const chat = $('kritChat');
   if (!chat) return;
-  const msg = document.createElement('div');
-  msg.className = 'krit-msg ' + kind;
-  msg.textContent = text;
-  chat.appendChild(msg);
+  const row = document.createElement('div');
+  row.className = 'krit-row ' + (kind === 'user' ? 'user' : 'ai');
+  const avatar = kind === 'user' ? document.createElement('div') : document.createElement('img');
+  avatar.className = kind === 'user' ? 'krit-avatar krit-user-avatar' : 'krit-avatar';
+  if (kind === 'user') avatar.textContent = 'YOU';
+  else avatar.src = 'assets/krit-ai/krit-logo.png';
+
+  const bubble = document.createElement('div');
+  bubble.className = 'krit-bubble';
+  if (imageData) {
+    const img = document.createElement('img');
+    img.src = imageData;
+    img.alt = 'attached rune image';
+    bubble.appendChild(img);
+  }
+  const body = document.createElement('div');
+  body.className = kind === 'ai' && /^[1-6]/.test(text) ? 'krit-answer' : '';
+  body.textContent = text;
+  bubble.appendChild(body);
+
+  row.appendChild(avatar);
+  row.appendChild(bubble);
+  chat.appendChild(row);
   chat.scrollTop = chat.scrollHeight;
+  return row;
 }
 
 function setKritImage(data, name) {
@@ -537,7 +677,8 @@ async function sendKritAi() {
   const sendBtn = $('kritSend');
   sendBtn.disabled = true;
   setKritStatus('Reading rune...', 'busy');
-  addKritMessage('user', question || 'Read this rune.');
+  addKritMessage('user', question || 'Read this rune.', imageData);
+  const thinking = addKritMessage('ai', 'Reading the rune...');
 
   try {
     const res = await fetch('/api/krit-ai', {
@@ -550,15 +691,18 @@ async function sendKritAi() {
       throw new Error(data.status || 'Krit AI could not read this rune.');
     }
     setKritStatus(data.method === 'apriltag' ? 'AprilTag matched' : 'AI fallback matched', 'ok');
+    if (thinking) thinking.remove();
     addKritMessage('ai', data.answer || data.status || 'Rune matched.');
   } catch (err) {
     setKritStatus('Error', 'error');
+    if (thinking) thinking.remove();
     addKritMessage('ai', err.message || 'Krit AI failed.');
   } finally {
     sendBtn.disabled = false;
   }
 }
 $('captureBtn').addEventListener('click', capture);
+$('pcCamBtn').addEventListener('click', togglePcCamera);
 $('shotClose').addEventListener('click', closeShot);
 $('shotModal').addEventListener('click', e => { if (e.target === $('shotModal')) closeShot(); });
 document.addEventListener('keydown', e => { if (e.key==='Escape') closeShot(); });
@@ -617,6 +761,7 @@ document.addEventListener('keyup', e => {
   if (KEYMAP[k]) { setBit(KEYMAP[k], false); btnEl(KEYMAP[k])?.classList.remove('pressed'); }
 });
 window.addEventListener('blur', clearState);   // lost focus -> stop
+window.addEventListener('beforeunload', () => { if (pcCamStream) pcCamStream.getTracks().forEach(t => t.stop()); });
 
 // block the long-press context menu on control buttons / car chips (mobile)
 document.addEventListener('contextmenu', e => { if (e.target.closest('.btn,.car')) e.preventDefault(); });
