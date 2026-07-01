@@ -99,7 +99,6 @@ void handleDrive(float t, float s) {
 
 // macro เก็บหิน: เปิดมือ -> ลงแขน -> หุบมือ(จับ) -> ยกแขน
 void collectRock() {
-  Serial.println("COLLECT rock");
   driveMotors(0, 0);                                    // หยุดล้อก่อน
   sGrip.write(GRIP_OPEN);            delay(400);
   aArm = ARM_DOWN;  sArm.write(aArm); delay(700);
@@ -143,7 +142,6 @@ void applyButtons() {
 
 void handleMove(const String& v) {
   lastCmd = millis();
-  Serial.println("MOVE -> " + v);
   if      (v == "forward")  driveMotors( 1,  1);
   else if (v == "backward") driveMotors(-1, -1);
   else if (v == "left")     driveMotors(-1,  1);
@@ -238,5 +236,5 @@ void loop() {
   // safety: ขาดคำสั่งนานเกินไป (สัญญาณหาย) -> หยุดทุกอย่าง
   bool anyActive = false;
   for (int i = 0; i < N_BTN; i++) if (btn[i]) { anyActive = true; break; }
-  if (anyActive && millis() - lastCmd > CMD_TIMEOUT) { Serial.println("timeout -> หยุด"); stopAll(); }
+  if (anyActive && millis() - lastCmd > CMD_TIMEOUT) { stopAll(); }
 }

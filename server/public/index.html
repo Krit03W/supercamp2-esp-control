@@ -335,6 +335,7 @@ function selectCar(n) {
   setBadge('robot',false); setBadge('camera',false);
   const img=$('cam'); img.style.display='none'; $('camPlaceholder').style.display='block'; $('fps').style.display='none';
   $('captureBtn').disabled=true;
+  renderShots();                             // แสดงเฉพาะรูปของคันที่เพิ่งเลือก
   lightOn=false; $('lightBtn').classList.remove('active');
   isDriver=false; applyDriveMode(); updateCarBar();   // lock controls until relay confirms role
 
@@ -343,7 +344,9 @@ function selectCar(n) {
 
 function toggleLight(){ lightOn=!lightOn; $('lightBtn').classList.toggle('active',lightOn); setBit('light', lightOn); }
 
-/* ====== capture current frame ====== */
+/* ====== capture current frame (เก็บแยกตามคัน) ====== */
+const shotStore = {};   // { [carNumber]: [ {data, name, time}, ... ] }
+
 function capture() {
   const img = $('cam');
   if (img.style.display === 'none' || !img.complete || !img.naturalWidth) return;  // no frame yet
@@ -355,25 +358,36 @@ function capture() {
   // flash feedback
   const fl = $('camFlash'); fl.classList.remove('go'); void fl.offsetWidth; fl.classList.add('go');
 
-  // build filename: car1_2026-06-27_14-30-05.jpg
   const d = new Date();
   const pad = x => String(x).padStart(2,'0');
   const ts = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
-  const name = `car${curCar}_${ts}.jpg`;
+  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 
-  // add thumbnail
-  const shot = document.createElement('div');
-  shot.className = 'shot';
-  shot.innerHTML = `<img src="${data}" alt=""><span class="t">${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}</span>`;
-  shot.onclick = () => openShot(data, name, shot);
-  $('shots').prepend(shot);
+  (shotStore[curCar] ||= []).unshift({ data, name: `car${curCar}_${ts}.jpg`, time });  // เก็บเข้าคลังของคันนี้
+  renderShots();
+}
+
+// วาด thumbnail เฉพาะรูปของคันที่กำลังเปิด
+function renderShots() {
+  const box = $('shots'); box.innerHTML = '';
+  (shotStore[curCar] || []).forEach(s => {
+    const shot = document.createElement('div');
+    shot.className = 'shot';
+    shot.innerHTML = `<img src="${s.data}" alt=""><span class="t">${s.time}</span>`;
+    shot.onclick = () => openShot(s);
+    box.appendChild(shot);
+  });
 }
 
 /* ====== captured-image viewer ====== */
-function openShot(data, name, shotEl) {
-  $('shotModalImg').src = data;
-  const dl = $('shotDownload'); dl.href = data; dl.download = name;
-  $('shotDelete').onclick = () => { shotEl.remove(); closeShot(); };
+function openShot(s) {
+  $('shotModalImg').src = s.data;
+  const dl = $('shotDownload'); dl.href = s.data; dl.download = s.name;
+  $('shotDelete').onclick = () => {
+    const arr = shotStore[curCar] || [];
+    const i = arr.indexOf(s); if (i >= 0) arr.splice(i, 1);
+    renderShots(); closeShot();
+  };
   $('shotModal').classList.add('show');
 }
 function closeShot(){ $('shotModal').classList.remove('show'); }
