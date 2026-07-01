@@ -22,11 +22,40 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
+const os = require('os');
+const { spawn } = require('child_process');
 const { WebSocketServer } = require('ws');
+
+function parseEnvLine(line) {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('=')) return null;
+  const i = trimmed.indexOf('=');
+  const key = trimmed.slice(0, i).trim();
+  let value = trimmed.slice(i + 1).trim();
+  value = value.replace(/^["']|["']$/g, '');
+  return key ? [key, value] : null;
+}
+
+function loadEnvFile(file) {
+  if (!fs.existsSync(file)) return;
+  const text = fs.readFileSync(file, 'utf8');
+  for (const line of text.split(/\r?\n/)) {
+    const parsed = parseEnvLine(line);
+    if (!parsed) continue;
+    const [key, value] = parsed;
+    if (process.env[key] === undefined) process.env[key] = value;
+  }
+}
+
+loadEnvFile(path.join(__dirname, '..', '.env'));
+loadEnvFile(path.join(__dirname, '.env'));
 
 const PORT = process.env.PORT || 8080;
 const TOKEN = process.env.AUTH_TOKEN || '';
 const PUBLIC = path.join(__dirname, 'public');
+const PYTHON_BIN = process.env.PYTHON_BIN || (process.platform === 'win32' ? 'python' : 'python3');
+const SCAN_RUNE = path.join(__dirname, 'scan_rune.py');
+const KRIT_BODY_LIMIT = 8 * 1024 * 1024;
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -36,10 +65,129 @@ const MIME = {
   '.ico': 'image/x-icon',
 };
 
+function sendJson(res, code, obj) {
+  res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' });
+  res.end(JSON.stringify(obj));
+}
+
+function readJsonBody(req, limitBytes) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let total = 0;
+    let done = false;
+    req.on('data', chunk => {
+      if (done) return;
+      total += chunk.length;
+      if (total > limitBytes) {
+        done = true;
+        const err = new Error('Request body is too large.');
+        err.statusCode = 413;
+        reject(err);
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      if (done) return;
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'));
+      } catch (e) {
+        e.statusCode = 400;
+        reject(e);
+      }
+    });
+    req.on('error', err => {
+      if (!done) reject(err);
+    });
+  });
+}
+
+function parseImageData(imageData) {
+  if (typeof imageData !== 'string' || !imageData.trim()) {
+    const err = new Error('No image was provided.');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const m = imageData.match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,([A-Za-z0-9+/=]+)$/i);
+  const mime = m ? m[1].toLowerCase() : 'image/jpeg';
+  const raw = m ? m[2] : imageData.trim();
+  const ext = mime.includes('png') ? '.png' : mime.includes('webp') ? '.webp' : '.jpg';
+  const buffer = Buffer.from(raw, 'base64');
+  if (!buffer.length) {
+    const err = new Error('Image data was empty.');
+    err.statusCode = 400;
+    throw err;
+  }
+  return { buffer, ext };
+}
+
+function runRuneScanner(imagePath, question) {
+  return new Promise((resolve, reject) => {
+    const args = [SCAN_RUNE, imagePath, '--json'];
+    if (question) args.push('--question', question);
+
+    const child = spawn(PYTHON_BIN, args, {
+      env: process.env,
+      windowsHide: true,
+    });
+    let stdout = '';
+    let stderr = '';
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error('Krit AI timed out while reading the rune.'));
+    }, 30000);
+
+    child.stdout.on('data', data => { stdout += data.toString(); });
+    child.stderr.on('data', data => { stderr += data.toString(); });
+    child.on('error', err => {
+      clearTimeout(timer);
+      reject(err);
+    });
+    child.on('close', code => {
+      clearTimeout(timer);
+      const text = stdout.trim().split(/\r?\n/).pop() || '';
+      try {
+        const parsed = JSON.parse(text);
+        if (code !== 0 && parsed.ok === undefined) parsed.ok = false;
+        resolve(parsed);
+      } catch (e) {
+        reject(new Error(stderr.trim() || stdout.trim() || `Scanner exited with code ${code}`));
+      }
+    });
+  });
+}
+
+async function handleKritAi(req, res) {
+  let tempDir = null;
+  try {
+    const body = await readJsonBody(req, KRIT_BODY_LIMIT);
+    const { buffer, ext } = parseImageData(body.imageData);
+    const question = typeof body.question === 'string' ? body.question.slice(0, 500) : '';
+
+    tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'krit-ai-'));
+    const imagePath = path.join(tempDir, `rune${ext}`);
+    await fs.promises.writeFile(imagePath, buffer);
+
+    const result = await runRuneScanner(imagePath, question);
+    sendJson(res, result.ok ? 200 : 422, result);
+  } catch (err) {
+    sendJson(res, err.statusCode || 500, {
+      ok: false,
+      method: 'server',
+      status: err.message || 'Krit AI failed.',
+    });
+  } finally {
+    if (tempDir) fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 /* ---------- static host ---------- */
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   let p = url.parse(req.url).pathname;
   if (p === '/health') { res.writeHead(200); return res.end('ok'); }
+  if (req.method === 'POST' && p === '/api/krit-ai') return handleKritAi(req, res);
   if (p === '/') p = '/index.html';
 
   const file = path.join(PUBLIC, path.normalize(p));

@@ -1,0 +1,2 @@
+opencv-contrib-python-headless>=4.8.0
+openai>=1.0.0

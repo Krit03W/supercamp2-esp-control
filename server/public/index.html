@@ -71,6 +71,29 @@
   .shot { position:relative; flex:none; width:104px; height:58px; border-radius:8px; overflow:hidden; border:1px solid #354259; cursor:pointer; background:#000; }
   .shot img { width:100%; height:100%; object-fit:cover; }
   .shot .t { position:absolute; left:0; right:0; bottom:0; font-size:9px; background:rgba(0,0,0,.6); color:#fff; text-align:center; padding:1px 0; }
+  .camera-panel { overflow-y:auto; }
+
+  /* Krit AI */
+  .krit-ai { margin-top:12px; background:var(--panel-2); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:10px; flex:none; }
+  .krit-top { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+  .krit-title { font-size:14px; font-weight:700; display:flex; align-items:center; gap:8px; }
+  .krit-state { font-size:11px; color:var(--muted); background:#0b0f16; border:1px solid #354259; border-radius:999px; padding:2px 8px; font-weight:600; }
+  .krit-state.busy { color:#fbbf24; border-color:#6b4d16; }
+  .krit-state.ok { color:var(--accent); border-color:#25685e; }
+  .krit-state.error { color:var(--danger); border-color:#5a2a3a; }
+  .krit-actions { display:flex; gap:8px; flex-wrap:wrap; }
+  .krit-btn, .krit-file { background:var(--panel); color:var(--text); border:1px solid #354259; border-radius:8px; padding:8px 10px; font-size:12px; font-weight:700; cursor:pointer; }
+  .krit-btn.primary { background:var(--accent-press); border-color:var(--accent); color:#fff; }
+  .krit-btn:disabled { opacity:.45; cursor:not-allowed; }
+  .krit-file input { display:none; }
+  .krit-preview { min-height:58px; display:flex; align-items:center; gap:10px; color:var(--muted); font-size:12px; background:#0b0f16; border:1px solid #354259; border-radius:8px; padding:6px; }
+  .krit-preview img { width:72px; height:48px; object-fit:cover; border-radius:6px; background:#000; flex:none; }
+  .krit-chat { min-height:76px; max-height:142px; overflow-y:auto; background:#0b0f16; border-radius:8px; padding:8px; display:flex; flex-direction:column; gap:6px; -webkit-user-select:text; user-select:text; }
+  .krit-msg { font-size:12px; line-height:1.35; color:var(--text); overflow-wrap:anywhere; }
+  .krit-msg.ai { color:var(--accent); }
+  .krit-msg.user { color:#cbd5e1; }
+  .krit-input-row { display:flex; gap:8px; }
+  .krit-input { flex:1; min-width:0; background:#0b0f16; color:var(--text); border:1px solid #354259; border-radius:8px; padding:9px 10px; font-size:13px; }
 
   /* image viewer modal */
   .modal { position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.92); display:none; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:20px; }
@@ -132,6 +155,9 @@
     .dpad { max-width:none; }            /* full-width D-pad for easier touch */
     button.btn { padding:18px; }
     .axis-row .label { width:56px; font-size:13px; }
+    .krit-input-row { flex-direction:column; }
+    .krit-actions { width:100%; }
+    .krit-actions .krit-btn, .krit-actions .krit-file { flex:1; text-align:center; }
   }
 </style>
 </head>
@@ -152,7 +178,7 @@
   </div>
 
   <main>
-    <section class="panel">
+    <section class="panel camera-panel">
       <h2>📷 Camera <span class="badge" id="camBadge">camera: offline</span>
         <button class="capbtn" id="captureBtn" disabled>📸 Capture</button>
       </h2>
@@ -163,6 +189,26 @@
         <div class="cam-flash" id="camFlash"></div>
       </div>
       <div class="shots" id="shots"></div>
+      <div class="krit-ai" id="kritAi">
+        <div class="krit-top">
+          <div class="krit-title">Krit AI <span class="krit-state" id="kritState">Ready</span></div>
+          <div class="krit-actions">
+            <button class="krit-btn" id="kritUseCapture" type="button">Use Last Capture</button>
+            <label class="krit-file">Upload<input id="kritFile" type="file" accept="image/*" /></label>
+          </div>
+        </div>
+        <div class="krit-preview">
+          <img id="kritPreviewImg" alt="" style="display:none" />
+          <span id="kritImageName">No image selected</span>
+        </div>
+        <div class="krit-chat" id="kritChat">
+          <div class="krit-msg ai">Krit AI ready.</div>
+        </div>
+        <div class="krit-input-row">
+          <input class="krit-input" id="kritQuestion" placeholder="Ask Krit AI..." />
+          <button class="krit-btn primary" id="kritSend" type="button">Send</button>
+        </div>
+      </div>
     </section>
 
     <section class="panel">
@@ -336,6 +382,7 @@ function selectCar(n) {
   const img=$('cam'); img.style.display='none'; $('camPlaceholder').style.display='block'; $('fps').style.display='none';
   $('captureBtn').disabled=true;
   renderShots();                             // แสดงเฉพาะรูปของคันที่เพิ่งเลือก
+  refreshKritFromLatest();
   lightOn=false; $('lightBtn').classList.remove('active');
   isDriver=false; applyDriveMode(); updateCarBar();   // lock controls until relay confirms role
 
@@ -363,7 +410,9 @@ function capture() {
   const ts = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
   const time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 
-  (shotStore[curCar] ||= []).unshift({ data, name: `car${curCar}_${ts}.jpg`, time });  // เก็บเข้าคลังของคันนี้
+  const shot = { data, name: `car${curCar}_${ts}.jpg`, time };
+  (shotStore[curCar] ||= []).unshift(shot);  // เก็บเข้าคลังของคันนี้
+  setKritImage(shot.data, shot.name);
   renderShots();
 }
 
@@ -386,15 +435,138 @@ function openShot(s) {
   $('shotDelete').onclick = () => {
     const arr = shotStore[curCar] || [];
     const i = arr.indexOf(s); if (i >= 0) arr.splice(i, 1);
-    renderShots(); closeShot();
+    renderShots();
+    if (kritImageData === s.data) refreshKritFromLatest();
+    closeShot();
   };
   $('shotModal').classList.add('show');
 }
 function closeShot(){ $('shotModal').classList.remove('show'); }
+
+/* ====== Krit AI rune reader ====== */
+let kritImageData = '';
+let kritImageName = '';
+
+function setKritStatus(text, mode='ready') {
+  const el = $('kritState');
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'krit-state' + (mode && mode !== 'ready' ? ' ' + mode : '');
+}
+
+function addKritMessage(kind, text) {
+  const chat = $('kritChat');
+  if (!chat) return;
+  const msg = document.createElement('div');
+  msg.className = 'krit-msg ' + kind;
+  msg.textContent = text;
+  chat.appendChild(msg);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function setKritImage(data, name) {
+  kritImageData = data || '';
+  kritImageName = name || 'Selected image';
+  const img = $('kritPreviewImg');
+  const label = $('kritImageName');
+  if (img) { img.src = kritImageData; img.style.display = kritImageData ? 'block' : 'none'; }
+  if (label) label.textContent = kritImageData ? kritImageName : 'No image selected';
+  setKritStatus(kritImageData ? 'Image ready' : 'Ready', kritImageData ? 'ok' : 'ready');
+}
+
+function clearKritImage() {
+  kritImageData = '';
+  kritImageName = '';
+  const img = $('kritPreviewImg');
+  if (img) { img.removeAttribute('src'); img.style.display = 'none'; }
+  const label = $('kritImageName');
+  if (label) label.textContent = 'No image selected';
+  setKritStatus('Ready');
+}
+
+function latestShot() {
+  return (shotStore[curCar] || [])[0] || null;
+}
+
+function refreshKritFromLatest() {
+  const s = latestShot();
+  if (s) setKritImage(s.data, s.name);
+  else clearKritImage();
+}
+
+function useLatestCaptureForKrit() {
+  const s = latestShot();
+  if (!s) {
+    setKritStatus('Need image', 'error');
+    addKritMessage('ai', 'Capture a rune image first.');
+    return;
+  }
+  setKritImage(s.data, s.name);
+}
+
+function readKritUpload(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    setKritStatus('Image only', 'error');
+    addKritMessage('ai', 'Please upload an image file.');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => setKritImage(String(reader.result || ''), file.name);
+  reader.onerror = () => {
+    setKritStatus('Upload failed', 'error');
+    addKritMessage('ai', 'Could not read that image.');
+  };
+  reader.readAsDataURL(file);
+}
+
+async function sendKritAi() {
+  let imageData = kritImageData;
+  if (!imageData && latestShot()) {
+    useLatestCaptureForKrit();
+    imageData = kritImageData;
+  }
+  if (!imageData) {
+    setKritStatus('Need image', 'error');
+    addKritMessage('ai', 'Capture or upload a rune image first.');
+    return;
+  }
+
+  const question = $('kritQuestion').value.trim();
+  const sendBtn = $('kritSend');
+  sendBtn.disabled = true;
+  setKritStatus('Reading rune...', 'busy');
+  addKritMessage('user', question || 'Read this rune.');
+
+  try {
+    const res = await fetch('/api/krit-ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageData, question })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      throw new Error(data.status || 'Krit AI could not read this rune.');
+    }
+    setKritStatus(data.method === 'apriltag' ? 'AprilTag matched' : 'AI fallback matched', 'ok');
+    addKritMessage('ai', data.answer || data.status || 'Rune matched.');
+  } catch (err) {
+    setKritStatus('Error', 'error');
+    addKritMessage('ai', err.message || 'Krit AI failed.');
+  } finally {
+    sendBtn.disabled = false;
+  }
+}
 $('captureBtn').addEventListener('click', capture);
 $('shotClose').addEventListener('click', closeShot);
 $('shotModal').addEventListener('click', e => { if (e.target === $('shotModal')) closeShot(); });
 document.addEventListener('keydown', e => { if (e.key==='Escape') closeShot(); });
+
+$('kritUseCapture').addEventListener('click', useLatestCaptureForKrit);
+$('kritFile').addEventListener('change', readKritUpload);
+$('kritSend').addEventListener('click', sendKritAi);
+$('kritQuestion').addEventListener('keydown', e => { if (e.key === 'Enter') sendKritAi(); });
 
 /* ====== unified button-state array (index ตรงกับ ESP32) ====== */
 const BTN = ['forward','backward','left','right','base_minus','base_plus',
